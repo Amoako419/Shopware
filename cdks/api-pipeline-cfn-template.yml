@@ -1,0 +1,1774 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: This CloudFormation template deploys infrastructure for the "How to build API-driven data pipelines on AWS to unlock third-party data" blog post.
+
+# NOTICE
+# This solution relies on two third-party libraries
+#
+# 1. Faker (https://faker.readthedocs.io/en/master/#)
+# Faker is a Python package that generates fake data. This solution uses Faker to simulate data generated from third-party SaaS
+# The Faker package has an open-source license from MIT [Copyright (c) 2012 Daniele Faraglia]
+#
+# 2. requests-aws4auth (https://pypi.org/project/requests-aws4auth/)
+# requests-aws4auth is a Python package that supports AWS version 4 authentication for requests. This solution uses requests-aws4auth to sign API requests to API Gateway endpoints with IAM authentication enabled.
+# The requests-aws4auth package has an open-source license from MIT [Copyright (c) 2015 Ted Timmons]
+
+Resources:
+  # Wildcards included are permissions needed for default key policy to grant the AWS account that owns the KMS access
+  FundraisingSecretKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS key for secret encryption
+      EnableKeyRotation: true
+      PendingWindowInDays: 20
+      KeyPolicy:
+        Version: "2012-10-17"
+        Id: default
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: "*"
+
+  # Wildcards included are permissions needed for default key policy to grant the AWS account that owns the KMS access
+  MembersSecretKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS key for secret encryption
+      EnableKeyRotation: true
+      PendingWindowInDays: 20
+      KeyPolicy:
+        Version: "2012-10-17"
+        Id: default
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: "*"
+
+  MySecretFundraising:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub
+        - "FundraisingSecret${RandomGUID}"
+        - {
+            RandomGUID:
+              !Select [
+                0,
+                !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]],
+              ],
+          }
+      SecretString: !Sub
+        - "a-${NewString}"
+        - NewString: !Select [2, !Split ["/", !Ref AWS::StackId]]
+      KmsKeyId: !GetAtt FundraisingSecretKMSKey.Arn
+
+  MySecretMembers:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub
+        - "MembersSecret${RandomGUID}"
+        - {
+            RandomGUID:
+              !Select [
+                0,
+                !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]],
+              ],
+          }
+      SecretString: !Sub
+        - "b-${NewString}"
+        - NewString: !Select [2, !Split ["/", !Ref AWS::StackId]]
+      KmsKeyId: !GetAtt MembersSecretKMSKey.Arn
+
+  MyApiGatewayFundraising:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Policy: !Sub |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "execute-api:Invoke",
+              "Resource": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/*/*"
+            }
+          ]
+        }
+      Name: !Sub
+        - "myApiGateway-Fundraising-${RandomGUID}"
+        - {
+            RandomGUID:
+              !Select [
+                0,
+                !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]],
+              ],
+          }
+
+  MyApiGatewayMembers:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Policy: !Sub |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "execute-api:Invoke",
+              "Resource": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/*/*"
+            }
+          ]
+        }
+      Name: !Sub
+        - "myApiGateway-Members-${RandomGUID}"
+        - {
+            RandomGUID:
+              !Select [
+                0,
+                !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]],
+              ],
+          }
+
+  MyFundraisingResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref MyApiGatewayFundraising
+      ParentId: !GetAtt MyApiGatewayFundraising.RootResourceId
+      PathPart: fundraising
+
+  MyMembersResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref MyApiGatewayMembers
+      ParentId: !GetAtt MyApiGatewayMembers.RootResourceId
+      PathPart: members
+
+  MyGetMethodFundraising:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref MyApiGatewayFundraising
+      ResourceId: !Ref MyFundraisingResource
+      HttpMethod: GET
+      AuthorizationType: AWS_IAM
+      ApiKeyRequired: true
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: Empty
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunctionArn}/invocations
+          - LambdaFunctionArn: !GetAtt LambdaFunctionFundraising.Arn
+        PassthroughBehavior: WHEN_NO_MATCH
+        IntegrationResponses:
+          - StatusCode: 200
+        RequestTemplates:
+          application/json: "{}"
+
+  MyLambdaPermissionFundraising:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LambdaFunctionFundraising
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${MyApiGatewayFundraising}/*/*/*
+
+  MyGetMethodMembers:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref MyApiGatewayMembers
+      ResourceId: !Ref MyMembersResource
+      HttpMethod: GET
+      AuthorizationType: AWS_IAM
+      ApiKeyRequired: true
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: Empty
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunctionArn}/invocations
+          - LambdaFunctionArn: !GetAtt LambdaFunctionMembers.Arn
+        PassthroughBehavior: WHEN_NO_MATCH
+        IntegrationResponses:
+          - StatusCode: 200
+        RequestTemplates:
+          application/json: "{}"
+
+  MyLambdaPermissionMembers:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LambdaFunctionMembers
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${MyApiGatewayMembers}/*/*/*
+
+  MyUsagePlanFundraising:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      ApiStages:
+        - ApiId: !Ref MyApiGatewayFundraising
+          Stage: !Ref MyApiGatewayFundraisingDeploymentStage
+      UsagePlanName: !Sub
+        - "api-blog-fundraising-${RandomGUID}"
+        - {
+            RandomGUID:
+              !Select [
+                0,
+                !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]],
+              ],
+          }
+
+  MyUsagePlanMembers:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      ApiStages:
+        - ApiId: !Ref MyApiGatewayMembers
+          Stage: !Ref MyApiGatewayMembersDeploymentStage
+      UsagePlanName: !Sub
+        - "api-blog-members-${RandomGUID}"
+        - {
+            RandomGUID:
+              !Select [
+                0,
+                !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]],
+              ],
+          }
+
+  MyApiKeyFundraising:
+    Type: AWS::ApiGateway::ApiKey
+    Properties:
+      Enabled: true
+      Value: !Sub
+        - "a-${NewString}"
+        - NewString: !Select [2, !Split ["/", !Ref AWS::StackId]]
+      StageKeys:
+        - RestApiId: !Ref MyApiGatewayFundraising
+          StageName: !Ref MyApiGatewayFundraisingDeploymentStage
+
+  MyApiKeyMembers:
+    Type: AWS::ApiGateway::ApiKey
+    Properties:
+      Enabled: true
+      Value: !Sub
+        - "b-${NewString}"
+        - NewString: !Select [2, !Split ["/", !Ref AWS::StackId]]
+      StageKeys:
+        - RestApiId: !Ref MyApiGatewayMembers
+          StageName: !Ref MyApiGatewayMembersDeploymentStage
+
+  MyDeploymentFundraising:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: MyGetMethodFundraising
+    Properties:
+      RestApiId: !Ref MyApiGatewayFundraising
+
+  MyDeploymentMembers:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: MyGetMethodMembers
+    Properties:
+      RestApiId: !Ref MyApiGatewayMembers
+
+  # Wildcards included are permissions needed given the log group is not yet created.
+  CloudWatchRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - apigateway.amazonaws.com
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                  - "logs:DescribeLogGroups"
+                  - "logs:DescribeLogStreams"
+                  - "logs:GetLogEvents"
+                  - "logs:FilterLogEvents"
+                Resource:
+                  - !Sub "arn:aws:logs:*:${AWS::AccountId}:*"
+          PolicyName: !Sub ${AWS::StackName}-${AWS::Region}-Cloudwatch-Access
+
+  Account:
+    Type: "AWS::ApiGateway::Account"
+    Properties:
+      CloudWatchRoleArn: !GetAtt
+        - CloudWatchRole
+        - Arn
+
+  # Wildcards included are permissions needed for default key policy to grant the AWS account that owns the KMS access
+  CloudwatchMembersKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS key for CloudWatch Logs encryption
+      EnableKeyRotation: true
+      PendingWindowInDays: 20
+      KeyPolicy:
+        Version: "2012-10-17"
+        Id: default
+        Statement:
+          - Sid: Enable KMS Permissions for Root
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: "*"
+          - Sid: Allow CloudWatch Logs to use the key
+            Effect: Allow
+            Principal:
+              Service: logs.eu-west-1.amazonaws.com
+            Action:
+              - "kms:Encrypt*"
+              - "kms:Decrypt*"
+              - "kms:ReEncrypt*"
+              - "kms:GenerateDataKey*"
+              - "kms:Describe*"
+            Resource: "*"
+            Condition:
+              ArnLike:
+                kms:EncryptionContext:aws:logs:arn: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/api-gateway/*"
+
+  # Wildcards included are permissions needed for default key policy to grant the AWS account that owns the KMS access
+  CloudwatchFundraisingKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS key for CloudWatch Logs encryption
+      EnableKeyRotation: true
+      PendingWindowInDays: 20
+      KeyPolicy:
+        Version: "2012-10-17"
+        Id: default
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: "*"
+          - Sid: Allow CloudWatch Logs to use the key
+            Effect: Allow
+            Principal:
+              Service: logs.eu-west-1.amazonaws.com
+            Action:
+              - "kms:Encrypt*"
+              - "kms:Decrypt*"
+              - "kms:ReEncrypt*"
+              - "kms:GenerateDataKey*"
+              - "kms:Describe*"
+            Resource: "*"
+            Condition:
+              ArnLike:
+                kms:EncryptionContext:aws:logs:arn: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/api-gateway/*"
+
+  CloudWatchLogGroupMembers:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/api-gateway/${MyApiGatewayMembers}-prod"
+      RetentionInDays: 30
+      KmsKeyId: !GetAtt CloudwatchMembersKMSKey.Arn
+
+  CloudWatchLogGroupFundraising:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/api-gateway/${MyApiGatewayFundraising}-prod"
+      RetentionInDays: 30
+      KmsKeyId: !GetAtt CloudwatchFundraisingKMSKey.Arn
+
+  MyApiGatewayMembersDeploymentStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref MyApiGatewayMembers
+      DeploymentId: !Ref MyDeploymentMembers
+      StageName: prod
+      AccessLogSetting:
+        DestinationArn: !GetAtt CloudWatchLogGroupMembers.Arn
+        Format: '{"requestId":"$context.requestId", "ip": "$context.identity.sourceIp", "requestTime": "$context.requestTime", "httpMethod": "$context.httpMethod", "routeKey": "$context.routeKey", "status": "$context.status", "responseLength": "$context.responseLength"}'
+
+  MyApiGatewayFundraisingDeploymentStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref MyApiGatewayFundraising
+      DeploymentId: !Ref MyDeploymentFundraising
+      StageName: prod
+      AccessLogSetting:
+        DestinationArn: !GetAtt CloudWatchLogGroupFundraising.Arn
+        Format: '{"requestId":"$context.requestId", "ip": "$context.identity.sourceIp", "requestTime": "$context.requestTime", "httpMethod": "$context.httpMethod", "routeKey": "$context.routeKey", "status": "$context.status", "responseLength": "$context.responseLength"}'
+
+  MyApiGatewayFundraisingUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref MyApiKeyFundraising
+      KeyType: API_KEY
+      UsagePlanId: !Ref MyUsagePlanFundraising
+
+  MyApiGatewayMembersUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref MyApiKeyMembers
+      KeyType: API_KEY
+      UsagePlanId: !Ref MyUsagePlanMembers
+
+  # Wildcards included are permissions needed given the log group is not yet created.
+  MyLambdaRoleFundraising:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource:
+                  - !Sub "arn:aws:logs:*:${AWS::AccountId}:*"
+          PolicyName: !Sub ${AWS::StackName}-${AWS::Region}-lambda-fundraising
+
+  # Wildcards included are permissions needed given the log group is not yet created.
+  MyLambdaRoleMembers:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource:
+                  - !Sub "arn:aws:logs:*:${AWS::AccountId}:*"
+          PolicyName: !Sub ${AWS::StackName}-${AWS::Region}-lambda-member
+
+  # This solution relies on a third-party library, Faker (https://faker.readthedocs.io/en/master/#)
+  # This solution uses Faker version 19.6.1 released on September 11, 2023
+  MyLambdaLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: faker-layer
+      Description: Lambda Layer for Faker module
+      Content:
+        S3Bucket: npo-blog-api-data-pipeline
+        S3Key: faker-layer/faker-library-layer.zip
+      CompatibleRuntimes:
+        - python3.11
+
+  # This solution relies on a third-party library requests-aws4auth (https://pypi.org/project/requests-aws4auth/)
+  # This solution uses aws-requests-auth version 1.2.3 released on May 3, 2023
+  MyRequestsLambdaLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: requests-layer
+      Description: Lambda Layer for requests-aws4auth
+      Content:
+        S3Bucket: npo-blog-api-data-pipeline
+        S3Key: requests-aws4auth-layer/aws4auth.zip
+      CompatibleRuntimes:
+        - python3.11
+
+  # This solution relies on a third-party library, Faker (https://faker.readthedocs.io/en/master/#)
+  # Faker is a Python package that generates fake data. This solution uses Faker to simulate data generated from third-party SaaS
+  # This lambda function uses Faker to generate fake fundraising data
+  LambdaFunctionFundraising:
+    Type: AWS::Lambda::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: Lambda function does not access VPC resources, therefore does not need to be deployed in a VPC
+          - id: W92
+            reason: Provisioned concurrency not needed - function runs once on stack create, update, and delete
+    Properties:
+      Description: "Generate fake fundraising data for fundraising API"
+      FunctionName: !Sub
+        - "lambda-fundraising-data-${RandomGUID}"
+        - {
+            RandomGUID:
+              !Select [
+                0,
+                !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]],
+              ],
+          }
+      Runtime: python3.11
+      Handler: index.handler
+      Timeout: 60
+      Layers:
+        - !Ref MyLambdaLayer
+      Role: !GetAtt MyLambdaRoleFundraising.Arn
+      Code:
+        ZipFile: |
+          import json
+          import os
+          import datetime
+          from faker import Faker
+
+          def handler(event, context):
+            response_data = {}
+            request = event.get('RequestType')
+
+            # set the seed to ensure the results are consistent on each run 
+            # avoid new names tied to the same id on each API call
+            fake = Faker([ 'en_US']) 
+            fake.seed_instance(4335)
+            
+            output = []
+
+            #update this range so that you're producing new primary key IDs each time
+            for i in range(1,11):
+                address = fake.address().replace("\n", ", ")
+                gender = fake.random.choice(["M", "F"])
+                card_type = fake.random.choice(["Visa", "Mastercard", "AmericanExpress"])
+                first_name = fake.first_name_male() if gender=="M" else fake.first_name_female()
+                last_name = fake.last_name()
+                created_at = fake.date_between_dates(datetime.date(2023, 1, 1), datetime.date(2023, 6, 30))
+
+                output.append(
+                    {
+                    "donor_id": i,
+                    "donor_first_name": first_name, 
+                      "donor_last_name": last_name,
+                      "donor_email_address": f"{first_name}.{last_name}@outlook.com",
+                      "donor_country": "US",
+                      "account_number": fake.pyint(1,100),
+                      "account_type": "savings",
+                      "billing_address1": fake.street_address(),
+                      "billing_postal_code": fake.postcode(),
+                      "billing_first_name": first_name,
+                      "billing_last_name": last_name,
+                      "campaign": {
+                        "campaign_id": fake.pyint(100,999),
+                        "allow_duplicate_fundraisers": "false",
+                        "allow_fundraising_pages": "true",
+                        "category_id": fake.pyint(1,100),
+                        "channel_id": fake.pyint(1,100),
+                        "currency_code": "USD",
+                        "goal": fake.pyint(200,1000),
+                      },
+                      "card_type": card_type,
+                      "transaction_date": str(created_at),
+                      "charged_currency_code": "USD",
+                      "designation_id": fake.pyint(1000,9999),
+                      "gross_donation_amount": fake.pyint(1,1000),
+                      "is_anonymous": "false",
+                      "status": "complete"
+                    })
+                i+=2
+
+            faker_response = {
+            "Page": 1,
+            "PageSize": 10,
+            "TotalCount": 10,
+            "Transactions": output
+            }
+
+            print(faker_response)
+            return faker_response
+
+  # This solution relies on a third-party library, Faker (https://faker.readthedocs.io/en/master/#)
+  # Faker is a Python package that generates fake data. This solution uses Faker to simulate data generated from third-party SaaS
+  # This lambda function uses Faker to generate fake membership data
+  LambdaFunctionMembers:
+    Type: AWS::Lambda::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: Lambda function does not access VPC resources, therefore does not need to be deployed in a VPC
+          - id: W92
+            reason: Provisioned concurrency not needed - function runs once on stack create, update, and delete
+    Properties:
+      Description: "Generate fake member data for members API"
+      FunctionName: !Sub
+        - "lambda-members-data-${RandomGUID}"
+        - {
+            RandomGUID:
+              !Select [
+                0,
+                !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]],
+              ],
+          }
+      Runtime: python3.11
+      Handler: index.handler
+      Timeout: 60
+      Layers:
+        - !Ref MyLambdaLayer
+      Role: !GetAtt MyLambdaRoleMembers.Arn
+      Code:
+        ZipFile: |
+          import json
+          import datetime
+          from faker import Faker
+
+          def handler(event, context):
+            fake = Faker([ 'en_US']) 
+            # set the seed to ensure the results are consistent on each run 
+            # avoid new names tied to the same donor_id on each API call
+            fake.seed_instance(4335)
+
+            output = []
+            
+            #update this range so that you're producing new primary key IDs each time
+            for i in range(1,11):
+                address = fake.address().replace("\n", ", ")
+                gender = fake.random.choice(["M", "F"])
+                first_name = fake.first_name_male() if gender=="M" else fake.first_name_female()
+                last_name = fake.last_name()
+                created_at = fake.date_between_dates(datetime.date(2010, 1, 1), datetime.date(2023, 1, 1))
+                
+                    
+                output.append(
+                    
+                    {
+                    "Id": i,
+                    "PersonAliasIds": [
+                    fake.pyint(1,100)
+                    ],
+                    "Title": None,
+                    "FirstName": first_name,
+                    "NickName": None,
+                    "MiddleName": None,
+                    "LastName": last_name,
+                    "Suffix": None,
+                    "BirthDay": fake.pyint(1,28),
+                    "BirthMonth": fake.pyint(1,12),
+                    "BirthYear": fake.pyint(1950,2005),
+                    "Gender": gender,
+                    "MaritalStatusValueId": fake.pyint(1,100),
+                    "MaritalStatus": fake.random.choice(["Married", "Single", "Divorced", "Widowed"]),
+                    "AnniversaryDate": str(fake.date_of_birth()),
+                    "GraduationYear": fake.pyint(1950,2005),
+                    "Email":  f"{first_name}.{last_name}@outlook.com",
+                    "AgeClassification": "Adult",
+                    "DeceasedDate": None,
+                    "IsBusiness": fake.pybool(),
+                    "HomePhone": None,
+                    "MobilePhone": fake.phone_number(),
+                    "HomeAddress": {
+                    "Latitude": None,
+                    "Longitude": None,
+                    "Street1":  fake.street_address(),
+                    "Street2": None,
+                    "City": None,
+                    "State": None,
+                    "PostalCode": fake.postcode(),
+                    "Country": "US",
+                    "County": None
+                    },
+                    "RecordStatus": "Active",
+                    "RecordStatusLastModifiedDateTime": None,
+                    "ConnectionStatus": "Member",
+                    "IsDeceased": False,
+                    "CreatedDate": str(created_at)
+                    }
+                    
+                    )
+                
+                    
+                i+=2
+            
+          #----------------------------------------------------------------
+
+            faker_response = {
+            "Page": 1,
+            "PageSize": 10,
+            "TotalCount": 10,
+            "Members": output
+            }
+
+            #json_object_faker = json.dumps(faker_response)
+            
+            print(faker_response)
+            
+            return faker_response
+
+  cleanupBucketOnDelete:
+    Type: Custom::cleanupbucket
+    Properties:
+      ServiceToken: !GetAtt cleanupBucketOnDeleteLambda.Arn
+      BucketName: !Ref MainBucket
+
+  cleanupBucketOnDeleteLambda:
+    Type: "AWS::Lambda::Function"
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: Lambda function does not access VPC resources, therefore does not need to be deployed in a VPC
+          - id: W92
+            reason: Provisioned concurrency not needed - function runs once on stack create, update, and delete
+    Properties:
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref MainBucket
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Timeout: 60
+      Description: cleanup Bucket on Delete Lambda Lambda function.
+      Role: !GetAtt cleanupBucketOnDeleteLambdaRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          import cfnresponse
+
+          bucket_name = os.environ['BUCKET_NAME']
+          response_data = {} 
+          s3 = boto3.resource('s3')
+          s3c = boto3.client('s3')
+
+          def empty_delete_buckets(bucket_name):
+              try:
+                bucket = s3.Bucket(bucket_name)
+                bucket.objects.all().delete()
+                response_data['Data'] = "successful delete"
+                
+              except Exception as e:
+                print(str(e))
+                response_data['Data'] = str(e)
+              
+          def lambda_handler(event, context):
+              print(event)
+              try:
+                if event['RequestType'] == 'Create' or event['RequestType'] == 'Update':
+                  cfnresponse.send(event,context,cfnresponse.SUCCESS,response_data)
+                elif event['RequestType'] == 'Delete':
+                  empty_delete_buckets(bucket_name)
+                  cfnresponse.send(event,context,cfnresponse.SUCCESS,response_data)
+              except Exception as e:
+                print(e)
+                cfnresponse.send(event,context,cfnresponse.FAILED,response_data)
+
+  # Wildcards included are permissions needed given the log group is not yet created.
+  cleanupBucketOnDeleteLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Description: Role to attach to Lambda
+      Policies:
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                  - "s3:PutObject"
+                  - "s3:DeleteObject"
+                  - "s3:ListBucket"
+                  - "s3:DeleteBucket"
+                Resource:
+                  - !Sub arn:aws:s3:::${MainBucket}
+                  - !Sub arn:aws:s3:::${MainBucket}/*
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource:
+                  - !Sub "arn:aws:logs:*:${AWS::AccountId}:*"
+          PolicyName: !Sub ${AWS::StackName}-${AWS::Region}-delete-lambda
+
+  # Wildcards included are permissions needed by the default Glue Service Role.
+  # Delete actions are not included
+  AWSGlueRoleAPIBlog:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub
+        - "AWSGlueServiceRole-APIBlog-${RandomGUID}"
+        - {
+            RandomGUID:
+              !Select [
+                0,
+                !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]],
+              ],
+          }
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "glue.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Description: Role to attach to Glue
+      Policies:
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "glue:CreateDatabase"
+                  - "glue:GetCrawler"
+                  - "glue:GetCrawlers"
+                  - "glue:GetPartitions"
+                  - "glue:GetSession"
+                  - "glue:RunStatement"
+                  - "glue:GetStatement"
+                  - "glue:StopCrawler"
+                  - "glue:GetSchema"
+                  - "glue:StartCrawler"
+                  - "glue:CreatePartition"
+                  - "glue:CreateTable"
+                  - "glue:GetTables"
+                  - "glue:GetDatabases"
+                  - "glue:GetPartitionIndexes"
+                  - "glue:GetTable"
+                  - "glue:CreateCrawler"
+                  - "glue:GetDatabase"
+                  - "glue:GetPartition"
+                  - "glue:BatchGetCrawlers"
+                  - "glue:CreateDatabase"
+                  - "glue:StartCrawlerSchedule"
+                  - "glue:CreateSchema"
+                  - "glue:ListCrawlers"
+                  - "glue:GetCrawlerMetrics"
+                  - "iam:ListRolePolicies"
+                  - "iam:GetRole"
+                  - "iam:PassRole"
+                  - "iam:GetRolePolicy"
+                  - "cloudwatch:PutMetricData"
+                Resource:
+                  - !Sub "arn:aws:glue:*:${AWS::AccountId}:database/*"
+                  - !Sub "arn:aws:glue:*:${AWS::AccountId}:table/*/*"
+                  - !Sub "arn:aws:glue:*:${AWS::AccountId}:catalog"
+                  - !Sub "arn:aws:glue:*:${AWS::AccountId}:session*"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:*"
+                  - !Sub "arn:aws:cloudwatch:*:${AWS::AccountId}:*"
+              - Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                  - "s3:PutObject"
+                  - "s3:DeleteObject"
+                  - "s3:GetBucketLocation"
+                  - "s3:ListBucket"
+                  - "s3:ListAllMyBuckets"
+                  - "s3:GetBucketAcl"
+                Resource:
+                  - !Sub arn:aws:s3:::${MainBucket}
+                  - !Sub arn:aws:s3:::${MainBucket}/*
+                  - !Sub arn:aws:s3:::aws-glue-assets-${AWS::AccountId}-${AWS::Region}
+                  - !Sub arn:aws:s3:::aws-glue-assets-${AWS::AccountId}-${AWS::Region}/*
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: "arn:aws:logs:*:*:/aws-glue/*"
+          PolicyName: !Sub ${AWS::StackName}-${AWS::Region}-glue-service
+
+  # Wildcards included are permissions needed by the default Step Functions Service Role.
+  # Wildcards included to allow user defined glue actions
+  # Delete actions are not included
+  AWSStepFunctionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "states.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Description: Role to attach to AWS Step Functions
+      Policies:
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "glue:CreateDatabase"
+                  - "glue:GetCrawler"
+                  - "glue:GetCrawlers"
+                  - "glue:GetPartitions"
+                  - "glue:CreateSession"
+                  - "glue:GetSession"
+                  - "glue:RunStatement"
+                  - "glue:GetStatement"
+                  - "glue:StopCrawler"
+                  - "glue:GetSchema"
+                  - "glue:StartCrawler"
+                  - "glue:CreatePartition"
+                  - "glue:CreateTable"
+                  - "glue:GetTables"
+                  - "glue:GetDatabases"
+                  - "glue:GetPartitionIndexes"
+                  - "glue:GetTable"
+                  - "glue:CreateCrawler"
+                  - "glue:GetDatabase"
+                  - "glue:GetPartition"
+                  - "glue:BatchGetCrawlers"
+                  - "glue:CreateDatabase"
+                  - "glue:StartCrawlerSchedule"
+                  - "glue:CreateSchema"
+                  - "glue:ListCrawlers"
+                  - "glue:GetCrawlerMetrics"
+                  - "glue:StartJobRun"
+                  - "glue:GetJobRun"
+                  - "glue:GetJobRuns"
+                  - "glue:BatchStopJobRun"
+                  - "lambda:InvokeFunction"
+                  - "logs:CreateLogDelivery"
+                  - "logs:GetLogDelivery"
+                  - "logs:UpdateLogDelivery"
+                  - "logs:ListLogDeliveries"
+                  - "logs:PutResourcePolicy"
+                  - "logs:DescribeResourcePolicies"
+                  - "logs:DescribeLogGroups"
+                  - "iam:ListRolePolicies"
+                  - "iam:GetRole"
+                  - "iam:PassRole"
+                  - "iam:GetRolePolicy"
+                Resource:
+                  - !GetAtt LambdaFunctionAPICall.Arn
+                  - !Sub "arn:aws:glue:*:${AWS::AccountId}:*"
+                  - !Sub "arn:aws:logs:*:${AWS::AccountId}:*"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:*"
+          PolicyName: !Sub ${AWS::StackName}-${AWS::Region}-stepfunctions
+
+  # Wildcards included are permissions needed given the log group is not yet created.
+  AWSLambdaRoleAPIBlog:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Description: Role to attach to Lambda
+      Policies:
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "kms:Decrypt*"
+                  - "kms:Describe*"
+                Resource:
+                  - !GetAtt FundraisingSecretKMSKey.Arn
+                  - !GetAtt MembersSecretKMSKey.Arn
+              - Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                  - "s3:PutObject"
+                  - "s3:DeleteObject"
+                  - "s3:ListBucket"
+                  - "s3:DeleteBucket"
+                Resource:
+                  - !Sub arn:aws:s3:::${MainBucket}
+                  - !Sub arn:aws:s3:::${MainBucket}/*
+              - Effect: Allow
+                Action:
+                  - "secretsmanager:GetResourcePolicy"
+                  - "secretsmanager:GetSecretValue"
+                  - "secretsmanager:DescribeSecret"
+                  - "secretsmanager:ListSecrets"
+                  - "secretsmanager:ListSecretVersionIds"
+                Resource:
+                  - !Ref MySecretMembers
+                  - !Ref MySecretFundraising
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource:
+                  - !Sub "arn:aws:logs:*:${AWS::AccountId}:*"
+          PolicyName: !Sub ${AWS::StackName}-${AWS::Region}-lambda-api
+
+  # Create lambda registry to store test events
+  checkEventRegistry:
+    Type: Custom::checkEventRegistry
+    Properties:
+      ServiceToken: !GetAtt checkEventRegistryLambda.Arn
+
+  # Lambda function will check if the lambda registry already exists, and if not will create the default registry
+  checkEventRegistryLambda:
+    Type: "AWS::Lambda::Function"
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: Lambda function does not access VPC resources, therefore does not need to be deployed in a VPC
+          - id: W92
+            reason: Provisioned concurrency not needed - function runs once on stack create, update, and delete
+    Properties:
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Timeout: 60
+      Description: cleanup Bucket on Delete Lambda Lambda function.
+      Role: !GetAtt checkEventRegistryLambdaRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+
+          response_data = {} 
+          # Initialize EventBridge client
+          eventbridge = boto3.client('schemas')
+
+          def check_event(registry_name):
+            
+              try:
+                  # Get schema by name
+                  response = eventbridge.describe_registry(
+                    RegistryName=registry_name
+                  )
+                  
+                  response_data['Data'] = "FOUND"
+                  print("FOUND")
+                  
+              except eventbridge.exceptions.NotFoundException:
+                  response_data['Data'] = "NOT_FOUND"
+                  print("NOT FOUND")
+              
+              except Exception as e:
+                  response_data['Data'] = "ERROR"
+                  print("ERROR")
+
+          def lambda_handler(event, context):
+              # Specify the schema name to check
+              registry_name = 'lambda-testevent-schemas'
+              
+              try:
+                  if event['RequestType'] == 'Create' or event['RequestType'] == 'Update':
+                      check_event(registry_name)
+                      try:
+                        if response_data['Data'] == 'FOUND':
+                            print("Registry already deployed, no action neccesary")
+                            cfnresponse.send(event,context,cfnresponse.SUCCESS,response_data)
+                        elif response_data['Data'] == 'NOT_FOUND':
+                            print("Registry not found, need to generate")
+                            response = eventbridge.create_registry(
+                                RegistryName=registry_name
+                            )
+                            cfnresponse.send(event,context,cfnresponse.SUCCESS,response_data)
+                      except Exception as e:
+                          print(e)
+                          cfnresponse.send(event,context,cfnresponse.FAILED,response_data)
+                  elif event['RequestType'] == 'Delete':
+                      cfnresponse.send(event,context,cfnresponse.SUCCESS,response_data)
+              except Exception as e:
+                  print(e)
+                  cfnresponse.send(event,context,cfnresponse.FAILED,response_data)
+
+  # Wildcards included are permissions needed given the schema registry is not yet created.
+  checkEventRegistryLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Description: Role to attach to Lambda
+      Policies:
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "schemas:DescribeRegistry"
+                  - "schemas:CreateRegistry"
+                Resource:
+                  - !Sub "arn:aws:schemas:*:${AWS::AccountId}:registry/*"
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource:
+                  - !Sub "arn:aws:logs:*:${AWS::AccountId}:*"
+          PolicyName: !Sub ${AWS::StackName}-${AWS::Region}-check-registry
+
+  LambdaEventSchema:
+    Type: AWS::EventSchemas::Schema
+    Properties:
+      # do not change. this is where aws stores events created in the Lambda Console
+      RegistryName: lambda-testevent-schemas
+      # the name format is key to associate it with the Lambda Function
+      SchemaName: !Sub
+        - _${Name}-schema
+        - Name: !Ref LambdaFunctionAPICall
+      Type: OpenApi3
+      # An OpenAPI doc defining all the event schemas
+      Content: !Sub
+        - |-
+          {
+            "openapi": "3.0.0",
+            "info": {
+              "version": "1.0.0",
+              "title": "Event"
+            },
+            "paths": {},
+            "components": {
+              "schemas": {
+                "Event": {
+                  "type": "object",
+                  "required": [
+                    "secret_name",
+                    "file_name",
+                    "bucket_name",
+                    "url"
+                  ],
+                  "properties": {
+                    "bucket_name": {
+                      "type": "string"
+                    },
+                    "file_name": {
+                      "type": "string"
+                    },
+                    "secret_name": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "examples": {
+                "members-test-event": {
+                  "value": {
+                    "secret_name": "${secretMembers}",
+                    "url": "${endpointMembers}",
+                    "bucket_name": "${bucketName}",
+                    "file_name": "members/members.json"
+                  }
+                },
+                "fundraising-test-event": {
+                  "value": {
+                    "secret_name": "${secretFundraising}",
+                    "url": "${endpointFundraising}",
+                    "bucket_name": "${bucketName}",
+                    "file_name": "fundraising/fundraising.json"
+                  }
+                }
+              }
+            }
+          }
+        - {
+            bucketName: !Ref MainBucket,
+            secretMembers:
+              !Select [
+                3,
+                !Split [":", !Select [2, !Split ["-", !Ref MySecretMembers]]],
+              ],
+            secretFundraising:
+              !Select [
+                3,
+                !Split [
+                  ":",
+                  !Select [2, !Split ["-", !Ref MySecretFundraising]],
+                ],
+              ],
+            endpointMembers: !Sub "https://${MyApiGatewayMembers}.execute-api.${AWS::Region}.amazonaws.com/prod/members",
+            endpointFundraising: !Sub "https://${MyApiGatewayFundraising}.execute-api.${AWS::Region}.amazonaws.com/prod/fundraising",
+          }
+
+  # This solution relies on a third-party library requests-aws4auth (https://pypi.org/project/requests-aws4auth/)
+  # requests-aws4auth is a Python package that supports AWS version 4 authentication for requests.
+  # This lambda function uses requests-aws4auth to sign API requests to API Gateway endpoints with IAM authentication enabled.
+  LambdaFunctionAPICall:
+    Type: AWS::Lambda::Function
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: Lambda function does not access VPC resources, therefore does not need to be deployed in a VPC
+          - id: W92
+            reason: Provisioned concurrency not needed - function runs once on stack create, update, and delete
+    Properties:
+      Description: "Make an API call to a data source using API keys stored in AWS Secrets Manager"
+      FunctionName: !Sub
+        - "lambda-api-call-${RandomGUID}"
+        - RandomGUID:
+            !Select [
+              0,
+              !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]],
+            ]
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Timeout: 60
+      Layers:
+        - !Ref MyRequestsLambdaLayer
+      Role: !GetAtt AWSLambdaRoleAPIBlog.Arn
+      Code:
+        ZipFile: |
+          import json
+          import os
+          import urllib3
+          import boto3
+          import datetime
+          import requests
+          from botocore.exceptions import ClientError
+          from botocore.session import Session
+          from requests_aws4auth import AWS4Auth
+
+          # Initializes S3 client
+          s3 = boto3.resource('s3')
+
+          def get_secret(secret_name):
+
+              region_name = "eu-west-1"
+
+              # Create a Secrets Manager client
+              session = boto3.session.Session()
+              client = session.client(
+                  service_name='secretsmanager',
+                  region_name=region_name
+              )
+
+              try:
+                  get_secret_value_response = client.get_secret_value(
+                      SecretId=secret_name
+                  )
+              except ClientError as e:
+                  raise e
+
+              # Decrypts secret using the associated KMS key.
+              secret = get_secret_value_response['SecretString']
+              
+              return secret
+
+          def call_api(url, auth, headers, bucket_name, s3_path):
+              
+              try:
+                  #get request from the API endpoint
+                  response = requests.get(url, auth=auth, headers=headers)
+                  payload = response.json()
+                  
+                  #raise any errors from get request
+                  response.raise_for_status()
+
+                  #upload payload to s3 bucket
+                  s3.Bucket(bucket_name).put_object(Key=s3_path, Body=str(payload))
+                  
+              except ClientError as e:
+                  raise e
+
+              return payload
+
+          def lambda_handler(event, context):
+              
+              # pass these variables in from the event payload 
+              url = event["url"]
+              secret_name = event["secret_name"]
+              file_name = event["file_name"]
+              bucket_name = event["bucket_name"]
+                  
+              ### API ELEMENTS
+              http = urllib3.PoolManager()
+              api_key = get_secret(secret_name)
+              headers = {"X-API-KEY": api_key}
+
+              ### AWS signature version 4 authentication for requests to API Gateway with AWS_IAM authorization enabled
+              # This blog post uses this authentication for security as our simulated API endpoints are hosted on AWS
+              # You will not need this authorization if you are sending requests to an API hosted outside of AWS
+              credentials = Session().get_credentials()              
+              auth = AWS4Auth(region='eu-west-1', service='execute-api', refreshable_credentials=credentials)
+
+              ### S3 ELEMENTS
+
+              #retain generic name, overwrites file with latest each call
+              s3_path = "raw-data/"+file_name
+              
+              ### API Call
+              payload = call_api(url, auth, headers, bucket_name, s3_path)
+
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps(payload)
+              }
+
+  MainBucket:
+    Type: "AWS::S3::Bucket"
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W35
+            reason: Solution is designed to be used by a small number of individuals; bucket logging not required
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !Sub
+        - "api-blog-data-store-${RandomGUID}"
+        - {
+            RandomGUID:
+              !Select [
+                0,
+                !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]],
+              ],
+          }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # Wildcard in this policy denies all S3 actions that don't utilize Secure transport
+  MainBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref MainBucket
+      PolicyDocument:
+        Statement:
+          - Action:
+              - "s3:*"
+            Effect: Deny
+            Resource:
+              - !Sub arn:aws:s3:::${MainBucket}
+              - !Sub arn:aws:s3:::${MainBucket}/*
+            Condition:
+              Bool:
+                "aws:SecureTransport": False
+            Principal: "*"
+
+  AthenaResultsBucket:
+    Type: "AWS::S3::Bucket"
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub
+        - "api-blog-athena-results-${RandomGUID}"
+        - {
+            RandomGUID:
+              !Select [
+                0,
+                !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]],
+              ],
+          }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LoggingConfiguration:
+        DestinationBucketName: !Ref LoggingBucket
+        LogFilePrefix: logs
+
+  # Wildcard in this policy denies all S3 actions that don't utilize Secure transport
+  AthenaBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AthenaResultsBucket
+      PolicyDocument:
+        Statement:
+          - Action:
+              - "s3:*"
+            Effect: Deny
+            Resource:
+              - !Sub arn:aws:s3:::${AthenaResultsBucket}
+              - !Sub arn:aws:s3:::${AthenaResultsBucket}/*
+            Condition:
+              Bool:
+                "aws:SecureTransport": False
+            Principal: "*"
+
+  LoggingBucket:
+    Type: "AWS::S3::Bucket"
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W35
+            reason: This bucket is the logging bucket for our Athena output, bucket logging not required on the logging bucket itself
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub
+        - "api-blog-logging-bucket-${RandomGUID}"
+        - {
+            RandomGUID:
+              !Select [
+                0,
+                !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]],
+              ],
+          }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # Wildcard in this policy denies all S3 actions that don't utilize Secure transport
+  S3BucketPolicy:
+    Type: "AWS::S3::BucketPolicy"
+    Properties:
+      Bucket: !Ref LoggingBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - "s3:PutObject"
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Resource: !Join
+              - ""
+              - - "arn:aws:s3:::"
+                - !Ref LoggingBucket
+                - /*
+            Condition:
+              ArnLike:
+                "aws:SourceArn": !GetAtt
+                  - AthenaResultsBucket
+                  - Arn
+              StringEquals:
+                "aws:SourceAccount": !Sub "${AWS::AccountId}"
+          - Action:
+              - "s3:*"
+            Effect: Deny
+            Resource:
+              - !Sub arn:aws:s3:::${LoggingBucket}
+              - !Sub arn:aws:s3:::${LoggingBucket}/*
+            Condition:
+              Bool:
+                "aws:SecureTransport": False
+            Principal: "*"
+
+  # Wildcards included are permissions needed by the default Glue Service Role.
+  # Wildcards included to allow user defined glue actions
+  # Delete actions are not included
+  CrawlerRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: "sts:AssumeRole"
+            Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+        Version: 2012-10-17
+      Policies:
+        - PolicyDocument:
+            Statement:
+              - Action:
+                  - "s3:GetObject"
+                  - "s3:PutObject"
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:s3:::${MainBucket}
+                  - !Sub arn:aws:s3:::${MainBucket}/*
+              - Action:
+                  - glue:CreateDatabase
+                  - glue:GetCrawler
+                  - glue:GetCrawlers
+                  - glue:DeleteDatabase
+                  - glue:GetPartitions
+                  - glue:BatchGetPartition
+                  - glue:BatchCreatePartition
+                  - glue:UpdatePartition
+                  - glue:CreateSession
+                  - glue:GetSession
+                  - glue:RunStatement
+                  - glue:GetStatement
+                  - glue:StopCrawler
+                  - glue:DeleteTable
+                  - glue:UpdateTable
+                  - glue:GetSchema
+                  - glue:DeleteSchema
+                  - glue:StartCrawler
+                  - glue:CreatePartition
+                  - glue:CreateTable
+                  - glue:GetTables
+                  - glue:DeleteCrawler
+                  - glue:GetDatabases
+                  - glue:GetPartitionIndexes
+                  - glue:GetTable
+                  - glue:CreateCrawler
+                  - glue:GetDatabase
+                  - glue:GetPartition
+                  - glue:BatchGetCrawlers
+                  - glue:CreateDatabase
+                  - glue:StartCrawlerSchedule
+                  - glue:CreateSchema
+                  - glue:BatchDeleteTable
+                  - glue:ListCrawlers
+                  - glue:GetCrawlerMetrics
+                  - glue:DeletePartition
+                  - s3:GetBucketLocation
+                  - s3:ListBucket
+                  - s3:ListAllMyBuckets
+                  - s3:GetBucketAcl
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:CreateBucket
+                  - iam:ListRolePolicies
+                  - iam:GetRole
+                  - iam:GetRolePolicy
+                  - cloudwatch:PutMetricData
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:s3:::${MainBucket}
+                  - !Sub arn:aws:s3:::${MainBucket}/*
+                  - !Sub "arn:aws:glue:*:${AWS::AccountId}:*"
+                  - !Sub "arn:aws:logs:*:${AWS::AccountId}:*"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:*"
+          Version: 2012-10-17
+          PolicyName: !Sub ${AWS::StackName}-${AWS::Region}-glue-crawler
+
+  GlueCrawlerRaw:
+    Type: "AWS::Glue::Crawler"
+    Properties:
+      Role: !GetAtt CrawlerRole.Arn
+      Targets:
+        S3Targets:
+          - Path: !Sub "s3://${MainBucket}/raw-data"
+      TablePrefix: raw_
+      DatabaseName: api_blog_database
+      Name: api-blog-crawler-raw
+
+  GlueCrawlerFlat:
+    Type: "AWS::Glue::Crawler"
+    Properties:
+      Role: !GetAtt CrawlerRole.Arn
+      Targets:
+        S3Targets:
+          - Path: !Sub "s3://${MainBucket}/flattened-data"
+      TablePrefix: flat_
+      DatabaseName: api_blog_database
+      Name: api-blog-crawler-flat
+
+  StepFunctionsStateMachine:
+    Type: "AWS::StepFunctions::StateMachine"
+    Properties:
+      StateMachineName: StateMachine-API-Pipeline-Blog
+      DefinitionString: !Sub
+        - |-
+          {
+            "Comment": "A description of my state machine",
+            "StartAt": "Parallel",
+            "States": {
+              "Parallel": {
+                "Type": "Parallel",
+                "Branches": [
+                  {
+                    "StartAt": "Lambda Invoke (members)",
+                    "States": {
+                      "Lambda Invoke (members)": {
+                        "Type": "Task",
+                        "Resource": "arn:aws:states:::lambda:invoke",
+                        "OutputPath": "$.Payload",
+                        "Parameters": {
+                          "FunctionName": "${lambdaArn}",
+                          "Payload": {
+                            "secret_name": "${secretMembers}",
+                            "url": "${endpointMembers}",
+                            "bucket_name": "${bucketName}",
+                            "file_name": "members/members.json"
+                          }
+                        },
+                        "Retry": [
+                          {
+                            "ErrorEquals": [
+                              "Lambda.ServiceException",
+                              "Lambda.AWSLambdaException",
+                              "Lambda.SdkClientException",
+                              "Lambda.TooManyRequestsException"
+                            ],
+                            "IntervalSeconds": 2,
+                            "MaxAttempts": 6,
+                            "BackoffRate": 2
+                          }
+                        ],
+                        "Next": "Glue StartJobRun (Members)"
+                      },
+                      "Glue StartJobRun (Members)": {
+                        "Type": "Task",
+                        "Resource": "arn:aws:states:::glue:startJobRun.sync",
+                        "Parameters": {
+                          "JobName": "insert job name here",
+                          "Arguments": {
+                            "--source_name": "members",
+                            "--bucket_name": "${bucketName}"
+                          }
+                        },
+                        "End": true
+                      }
+                    }
+                  },
+                  {
+                    "StartAt": "Lambda Invoke (fundraising)",
+                    "States": {
+                      "Lambda Invoke (fundraising)": {
+                        "Type": "Task",
+                        "Resource": "arn:aws:states:::lambda:invoke",
+                        "OutputPath": "$.Payload",
+                        "Parameters": {
+                          "FunctionName": "${lambdaArn}",
+                          "Payload": {
+                            "secret_name": "${secretFundraising}",
+                            "url": "${endpointFundraising}",
+                            "bucket_name": "${bucketName}",
+                            "file_name": "fundraising/fundraising.json"   
+                          }
+                        },
+                        "Retry": [
+                          {
+                            "ErrorEquals": [
+                              "Lambda.ServiceException",
+                              "Lambda.AWSLambdaException",
+                              "Lambda.SdkClientException",
+                              "Lambda.TooManyRequestsException"
+                            ],
+                            "IntervalSeconds": 2,
+                            "MaxAttempts": 6,
+                            "BackoffRate": 2
+                          }
+                        ],
+                        "Next": "Glue StartJobRun (Fundraising)"
+                      },
+                      "Glue StartJobRun (Fundraising)": {
+                        "Type": "Task",
+                        "Resource": "arn:aws:states:::glue:startJobRun.sync",
+                        "Parameters": {
+                          "JobName": "insert job name here",
+                          "Arguments": {
+                            "--source_name": "fundraising",
+                            "--bucket_name": "${bucketName}"
+                          }
+                        },
+                        "End": true
+                      }
+                    }
+                  }
+                ],
+                "End": true
+              }
+            }
+          }
+        - {
+            lambdaArn: !GetAtt [LambdaFunctionAPICall, Arn],
+            bucketName: !Ref MainBucket,
+            secretMembers:
+              !Select [
+                3,
+                !Split [":", !Select [2, !Split ["-", !Ref MySecretMembers]]],
+              ],
+            secretFundraising:
+              !Select [
+                3,
+                !Split [
+                  ":",
+                  !Select [2, !Split ["-", !Ref MySecretFundraising]],
+                ],
+              ],
+            endpointMembers: !Sub "https://${MyApiGatewayMembers}.execute-api.${AWS::Region}.amazonaws.com/prod/members",
+            endpointFundraising: !Sub "https://${MyApiGatewayFundraising}.execute-api.${AWS::Region}.amazonaws.com/prod/fundraising",
+          }
+      RoleArn: !GetAtt AWSStepFunctionsRole.Arn
+
+Outputs:
+  SecretNameFundraising:
+    Value:
+      !Select [
+        3,
+        !Split [":", !Select [2, !Split ["-", !Ref MySecretFundraising]]],
+      ]
+    Description: Name of the fundraising API secret in AWS Secrets Manager
+
+  ApiGatewayUrlFundraising:
+    Value: !Sub "https://${MyApiGatewayFundraising}.execute-api.${AWS::Region}.amazonaws.com/prod/fundraising"
+    Description: URL for the fundraising API
+
+  SecretNameMembers:
+    Value:
+      !Select [3, !Split [":", !Select [2, !Split ["-", !Ref MySecretMembers]]]]
+    Description: Name of the members API secret in AWS Secrets Manager
+
+  ApiGatewayUrlMembers:
+    Value: !Sub "https://${MyApiGatewayMembers}.execute-api.${AWS::Region}.amazonaws.com/prod/members"
+    Description: URL for the members API
+
+  S3BucketName:
+    Value: !Ref MainBucket
+    Description: S3 bucket name
