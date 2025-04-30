@@ -25,7 +25,7 @@ def lambda_handler(event, context):
                 s3.download_file(source_bucket, source_key, temp_input.name)
 
                 # Read the CSV into a DataFrame
-                df = pd.read_csv(temp_input.name)  # << CSV FACTORED IN HERE
+                df = pd.read_csv(temp_input.name) 
 
                 # Generate unique Parquet filename
                 base_filename = os.path.splitext(os.path.basename(source_key))[0]
@@ -35,7 +35,7 @@ def lambda_handler(event, context):
 
                 # Save DataFrame as Parquet to /tmp
                 with tempfile.NamedTemporaryFile(suffix=".parquet") as temp_output:
-                    df.to_parquet(temp_output.name, engine="pyarrow", index=False)
+                    df.to_parquet(temp_output.name, index=False)
 
                     # Upload Parquet to bronze bucket
                     s3.upload_file(temp_output.name, TARGET_BUCKET, bronze_key)
