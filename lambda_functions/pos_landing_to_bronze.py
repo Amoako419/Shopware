@@ -1,0 +1,176 @@
+import json
+import logging
+import os
+import boto3
+import pandas as pd
+from datetime import datetime
+from urllib.parse import unquote_plus
+from botocore.exceptions import ClientError
+
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+# Initialize AWS clients
+s3_client = boto3.client('s3')
+sqs_client = boto3.client('sqs')
+
+def get_current_date():
+    """Return today's date in YYYY-MM-DD format."""
+    return datetime.utcnow().strftime('%Y-%m-%d')
+
+def parse_s3_event(s3_event):
+    try:
+        bucket = s3_event['s3']['bucket']['name']
+        key = unquote_plus(s3_event['s3']['object']['key'])
+        logger.info(f"Parsed S3 event: bucket={bucket}, key={key}")
+        return bucket, key
+    except KeyError as e:
+        logger.error(f"Failed to parse S3 event: {str(e)}")
+        return None, None
+
+def read_csv_from_s3(bucket, key):
+    try:
+        logger.info(f"Reading CSV from s3://{bucket}/{key}")
+        obj = s3_client.get_object(Bucket=bucket, Key=key)
+        df = pd.read_csv(obj['Body'])
+        logger.info(f"Successfully read CSV: {df.shape[0]} rows, {df.shape[1]} columns")
+        return df
+    except ClientError as e:
+        logger.error(f"Failed to read CSV from S3: {str(e)}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error reading CSV: {str(e)}")
+        return None
+
+def write_parquet_to_s3(df, bucket, destination_key):
+    try:
+        logger.info(f"Writing Parquet to s3://{bucket}/{destination_key}")
+        # Convert DataFrame to Parquet in memory
+        parquet_buffer = df.to_parquet(engine='pyarrow', index=False)
+        # Upload to S3
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=destination_key,
+            Body=parquet_buffer,
+            ContentType='application/x-parquet'
+        )
+        logger.info(f"Successfully wrote Parquet to s3://{bucket}/{destination_key}")
+        return True
+    except ClientError as e:
+        logger.error(f"Failed to write Parquet to S3: {str(e)}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error writing Parquet: {str(e)}")
+        return False
+
+def process_s3_event(s3_event, source_bucket_name, destination_bucket_name, source_prefix, destination_prefix):
+    bucket, key = parse_s3_event(s3_event)
+    if not bucket or not key:
+        logger.error("Invalid S3 event data")
+        return False
+
+    # Verify bucket matches source bucket
+    if bucket != source_bucket_name:
+        logger.warning(f"Skipping file from bucket {bucket}: does not match expected source bucket {source_bucket_name}")
+        return False
+
+    # Verify source path
+    if not key.startswith(source_prefix):
+        logger.warning(f"Skipping file {key}: does not match source prefix {source_prefix}")
+        return False
+
+    # Verify file ends with .csv
+    if not key.lower().endswith('.csv'):
+        logger.warning(f"Skipping file {key}: not a CSV file")
+        return False
+
+    # Read CSV from source bucket
+    df = read_csv_from_s3(bucket, key)
+    if df is None:
+        logger.error("Failed to read CSV data")
+        return False
+
+    # Generate destination key with today's date
+    today = get_current_date()
+    destination_key = f"{destination_prefix}{today}/data.parquet"
+
+    # Write Parquet to destination bucket
+    success = write_parquet_to_s3(df, destination_bucket_name, destination_key)
+    if not success:
+        logger.error("Failed to write Parquet data")
+        return False
+
+    return True
+
+def lambda_handler(event, context):
+    # Fetch bucket names from environment variables
+    try:
+        source_bucket_name = os.environ['SOURCE_BUCKET_NAME']
+        destination_bucket_name = os.environ['DESTINATION_BUCKET_NAME']
+        logger.info(f"Using source bucket: {source_bucket_name}, destination bucket: {destination_bucket_name}")
+    except KeyError as e:
+        logger.error(f"Environment variable {str(e)} not set")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': f"Environment variable {str(e)} missing"})
+        }
+
+    logger.info(f"Received event with {len(event['Records'])} records")
+    
+    source_prefix = "pos_data/pos_landing_data/"
+    destination_prefix = "bronze-pos/"
+    processed_records = 0
+    failed_records = 0
+
+    for record in event['Records']:
+        try:
+            # Parse SQS message
+            message_body = json.loads(record['body'])
+            logger.info(f"Processing SQS message: {record['messageId']}")
+
+            # S3 events may be wrapped in an SNS or direct S3 notification
+            if 'Records' in message_body:
+                # S3 event notification
+                for s3_record in message_body['Records']:
+                    success = process_s3_event(
+                        s3_record, 
+                        source_bucket_name, 
+                        destination_bucket_name, 
+                        source_prefix, 
+                        destination_prefix
+                    )
+                    if success:
+                        processed_records += 1
+                    else:
+                        failed_records += 1
+            else:
+                logger.warning(f"Unexpected message format: {json.dumps(message_body)}")
+                failed_records += 1
+
+            # Delete message from SQS to prevent reprocessing
+            sqs_client.delete_message(
+                QueueUrl=record['eventSourceARN'].split(':')[5],
+                ReceiptHandle=record['receiptHandle']
+            )
+            logger.info(f"Deleted SQS message: {record['messageId']}")
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse SQS message body: {str(e)}")
+            failed_records += 1
+        except ClientError as e:
+            logger.error(f"AWS API error processing record: {str(e)}")
+            failed_records += 1
+        except Exception as e:
+            logger.error(f"Unexpected error processing record: {str(e)}")
+            failed_records += 1
+
+    logger.info(f"Processing complete: {processed_records} succeeded, {failed_records} failed")
+    
+    return {
+        'statusCode': 200,
+        'body': json.dumps({
+            'processed': processed_records,
+            'failed': failed_records
+        })
+    }
