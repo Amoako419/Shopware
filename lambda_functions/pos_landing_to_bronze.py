@@ -19,6 +19,7 @@ def get_current_date():
     """Return today's date in YYYY-MM-DD format."""
     return datetime.utcnow().strftime('%Y-%m-%d')
 
+# A function to generate a unique Parquet filename by counting existing files in the destination path.
 def get_unique_parquet_filename(bucket, prefix):
     """
     Generate a unique Parquet filename by counting existing files in the destination path.
@@ -44,6 +45,7 @@ def get_unique_parquet_filename(bucket, prefix):
         logger.error(f"Unexpected error generating unique filename: {str(e)}")
         return None
 
+# A function to parse S3 event from SQS message to extract bucket and key.
 def parse_s3_event(s3_event):
     """
     Parse S3 event from SQS message to extract bucket and key.
@@ -61,6 +63,7 @@ def parse_s3_event(s3_event):
         logger.error(f"Failed to parse S3 event: {str(e)}")
         return None, None
 
+# A function to read a CSV file from S3 into a pandas DataFrame.
 def read_csv_from_s3(bucket, key):
     """
     Read a CSV file from S3 into a pandas DataFrame.
@@ -83,6 +86,7 @@ def read_csv_from_s3(bucket, key):
         logger.error(f"Unexpected error reading CSV: {str(e)}")
         return None
 
+# A function to write a DataFrame to S3 as a Parquet file.
 def write_parquet_to_s3(df, bucket, destination_key):
     """
     Write a DataFrame to S3 as a Parquet file.
@@ -113,18 +117,8 @@ def write_parquet_to_s3(df, bucket, destination_key):
         logger.error(f"Unexpected error writing Parquet: {str(e)}")
         return False
 
+# A function to process an S3 event by reading CSV, converting to Parquet, and saving to destination bucket.
 def process_s3_event(s3_event, source_bucket_name, destination_bucket_name, source_prefix, destination_prefix):
-    """
-    Process an S3 event by reading CSV, converting to Parquet, and saving to destination bucket.
-    Args:
-        s3_event (dict): S3 event data.
-        source_bucket_name (str): Source S3 bucket name from environment variable.
-        destination_bucket_name (str): Destination S3 bucket name from environment variable.
-        source_prefix (str): Expected source prefix (e.g., 'pos_data/pos_landing_data/').
-        destination_prefix (str): Destination prefix (e.g., 'bronze-pos/').
-    Returns:
-        bool: True if successful, False otherwise.
-    """
     bucket, key = parse_s3_event(s3_event)
     if not bucket or not key:
         logger.error("Invalid S3 event data")
@@ -172,15 +166,8 @@ def process_s3_event(s3_event, source_bucket_name, destination_bucket_name, sour
 
     return True
 
+# AWS Lambda handler to process SQS messages containing S3 events.
 def lambda_handler(event, context):
-    """
-    AWS Lambda handler to process SQS messages containing S3 events.
-    Args:
-        event (dict): Lambda event data (SQS messages).
-        context (object): Lambda context object.
-    Returns:
-        dict: Lambda response.
-    """
     # Fetch bucket names from environment variables
     try:
         source_bucket_name = os.environ['SOURCE_BUCKET_NAME']
