@@ -19,7 +19,39 @@ def get_current_date():
     """Return today's date in YYYY-MM-DD format."""
     return datetime.utcnow().strftime('%Y-%m-%d')
 
+def get_unique_parquet_filename(bucket, prefix):
+    """
+    Generate a unique Parquet filename by counting existing files in the destination path.
+    Args:
+        bucket (str): Destination S3 bucket.
+        prefix (str): Destination prefix (e.g., 'bronze-pos/YYYY-MM-DD/').
+    Returns:
+        str: Unique filename (e.g., 'data1.parquet', 'data2.parquet').
+    """
+    try:
+        # List objects in the destination prefix
+        response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+        # Count existing Parquet files
+        parquet_count = 0
+        if 'Contents' in response:
+            parquet_count = sum(1 for obj in response['Contents'] if obj['Key'].endswith('.parquet'))
+        # Generate the next filename (e.g., data1.parquet for count=0)
+        return f"data{parquet_count + 1}.parquet"
+    except ClientError as e:
+        logger.error(f"Failed to list objects in s3://{bucket}/{prefix}: {str(e)}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error generating unique filename: {str(e)}")
+        return None
+
 def parse_s3_event(s3_event):
+    """
+    Parse S3 event from SQS message to extract bucket and key.
+    Args:
+        s3_event (dict): S3 event data from SQS message.
+    Returns:
+        tuple: (bucket_name, object_key) or (None, None) if parsing fails.
+    """
     try:
         bucket = s3_event['s3']['bucket']['name']
         key = unquote_plus(s3_event['s3']['object']['key'])
@@ -30,6 +62,14 @@ def parse_s3_event(s3_event):
         return None, None
 
 def read_csv_from_s3(bucket, key):
+    """
+    Read a CSV file from S3 into a pandas DataFrame.
+    Args:
+        bucket (str): S3 bucket name.
+        key (str): S3 object key.
+    Returns:
+        pandas.DataFrame or None if reading fails.
+    """
     try:
         logger.info(f"Reading CSV from s3://{bucket}/{key}")
         obj = s3_client.get_object(Bucket=bucket, Key=key)
@@ -44,6 +84,15 @@ def read_csv_from_s3(bucket, key):
         return None
 
 def write_parquet_to_s3(df, bucket, destination_key):
+    """
+    Write a DataFrame to S3 as a Parquet file.
+    Args:
+        df (pandas.DataFrame): Data to write.
+        bucket (str): Destination S3 bucket.
+        destination_key (str): Destination S3 key.
+    Returns:
+        bool: True if successful, False otherwise.
+    """
     try:
         logger.info(f"Writing Parquet to s3://{bucket}/{destination_key}")
         # Convert DataFrame to Parquet in memory
@@ -65,6 +114,17 @@ def write_parquet_to_s3(df, bucket, destination_key):
         return False
 
 def process_s3_event(s3_event, source_bucket_name, destination_bucket_name, source_prefix, destination_prefix):
+    """
+    Process an S3 event by reading CSV, converting to Parquet, and saving to destination bucket.
+    Args:
+        s3_event (dict): S3 event data.
+        source_bucket_name (str): Source S3 bucket name from environment variable.
+        destination_bucket_name (str): Destination S3 bucket name from environment variable.
+        source_prefix (str): Expected source prefix (e.g., 'pos_data/pos_landing_data/').
+        destination_prefix (str): Destination prefix (e.g., 'bronze-pos/').
+    Returns:
+        bool: True if successful, False otherwise.
+    """
     bucket, key = parse_s3_event(s3_event)
     if not bucket or not key:
         logger.error("Invalid S3 event data")
@@ -91,9 +151,18 @@ def process_s3_event(s3_event, source_bucket_name, destination_bucket_name, sour
         logger.error("Failed to read CSV data")
         return False
 
-    # Generate destination key with today's date
+    # Generate destination prefix with today's date
     today = get_current_date()
-    destination_key = f"{destination_prefix}{today}/data.parquet"
+    destination_path = f"{destination_prefix}{today}/"
+
+    # Get unique filename (e.g., data1.parquet)
+    filename = get_unique_parquet_filename(destination_bucket_name, destination_path)
+    if not filename:
+        logger.error("Failed to generate unique Parquet filename")
+        return False
+
+    # Construct destination key
+    destination_key = f"{destination_path}{filename}"
 
     # Write Parquet to destination bucket
     success = write_parquet_to_s3(df, destination_bucket_name, destination_key)
@@ -104,6 +173,14 @@ def process_s3_event(s3_event, source_bucket_name, destination_bucket_name, sour
     return True
 
 def lambda_handler(event, context):
+    """
+    AWS Lambda handler to process SQS messages containing S3 events.
+    Args:
+        event (dict): Lambda event data (SQS messages).
+        context (object): Lambda context object.
+    Returns:
+        dict: Lambda response.
+    """
     # Fetch bucket names from environment variables
     try:
         source_bucket_name = os.environ['SOURCE_BUCKET_NAME']
