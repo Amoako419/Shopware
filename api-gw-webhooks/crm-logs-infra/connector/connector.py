@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 
 # variables
 SOURCE_URL = "http://18.203.232.58:8000/api/customer-interaction/"
-STREAM_NAME = "STREAM_NAME"
+STREAM_NAME = "crm-logs-firehose"
 REGION = "eu-west-1"
-POLL_INTERVAL =  10
+POLL_INTERVAL =  5
 BATCH_SIZE = 500
 
 # AWS Firehose client
