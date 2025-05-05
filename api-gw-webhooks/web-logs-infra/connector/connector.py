@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Environment variables
 SOURCE_URL = "http://18.203.232.58:8000/api/web-traffic/"
-STREAM_NAME = "shopware-web-logs-firehose"
+STREAM_NAME = "web-logs-firehose"
 REGION = "eu-west-1"
 POLL_INTERVAL =  10
 BATCH_SIZE = 500           # Max records per batch

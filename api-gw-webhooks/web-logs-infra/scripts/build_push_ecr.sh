@@ -2,10 +2,10 @@
 
 # === CONFIGURATION ===
 AWS_REGION="eu-west-1"
-AWS_ACCOUNT_ID=405894843300
-ECR_REPO_NAME="crm-logs-ecs"  # Changed to match desired image name
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+ECR_REPO_NAME="web-logs-ecs"
 IMAGE_TAG="latest"
-DOCKERFILE_PATH="$(dirname $0)/../connector"  # Use dirname to get script directory, then navigate to connector
+DOCKERFILE_PATH="$(dirname $0)/../connector"
 
 # === SCRIPT START ===
 set -e
@@ -23,7 +23,7 @@ echo "🐳  Building Docker image..."
 docker build -t $ECR_REPO_NAME:$IMAGE_TAG -f $DOCKERFILE_PATH/Dockerfile $DOCKERFILE_PATH
 
 # Tag with full ECR path
-ECR_IMAGE_URI="crm-logs-ecs.${AWS_REGION}.amazonaws.com/crm-logs-ecs-:${IMAGE_TAG}"
+ECR_IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}:${IMAGE_TAG}"
 docker tag $ECR_REPO_NAME:$IMAGE_TAG $ECR_IMAGE_URI
 
 # Push to ECR

@@ -184,7 +184,7 @@ resource "aws_apigatewayv2_api" "http_api" {
 // Lambda Proxy for API Gateway to Firehose
 // ================================
 resource "aws_iam_role" "lambda_role" {
-  name = "api-firehose-lambda-role"
+  name = "web-api-firehose-lambda-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -196,7 +196,7 @@ resource "aws_iam_role" "lambda_role" {
 }
 
 resource "aws_iam_role_policy" "lambda_firehose_policy" {
-  name = "lambda-firehose-policy"
+  name = "web-logs-lambda-firehose-policy"
   role = aws_iam_role.lambda_role.id
   policy = jsonencode({
     Version = "2012-10-17"
@@ -218,7 +218,7 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
 
 resource "aws_lambda_function" "proxy" {
   filename         = "../proxy/index.zip"
-  function_name    = "firehose-proxy"
+  function_name    = "web-logs-firehose-proxy"
   role            = aws_iam_role.lambda_role.arn
   handler         = "index.handler"
   runtime         = "nodejs18.x"
@@ -268,7 +268,7 @@ resource "aws_ecs_cluster" "connector_cluster" {
 }
 
 resource "aws_iam_role" "ecs_task_execution" {
-  name = "ecsTaskExecutionRole"
+  name = "web-ecsTaskExecutionRole"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -284,7 +284,7 @@ resource "aws_iam_role_policy_attachment" "ecs_exec_attach" {
 }
 
 resource "aws_iam_role" "ecs_task_role" {
-  name = "ecsTaskRole"
+  name = "web-logs-ecsTaskRole"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -295,7 +295,7 @@ resource "aws_iam_role" "ecs_task_role" {
   })
 }
 resource "aws_iam_role_policy" "ecs_task_firehose" {
-  name   = "ecsTaskFirehosePolicy"
+  name   = "web-logs-ecsTaskFirehosePolicy"
   role   = aws_iam_role.ecs_task_role.id
   policy = jsonencode({
     Version = "2012-10-17"
