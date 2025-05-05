@@ -2,7 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+node_modules/
 # C extensions
 *.so
 
@@ -172,3 +172,21 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+terraform.tfstate.*.backup
+.terraformrc
+terraform.rc
+*.tfvars
+!terraform.tfvars
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.tfstate.lock.info
+crash.log
+crash.*.log
