@@ -96,7 +96,7 @@ final_kpis_df = engagement_score_df.crossJoin(session_metrics_df).crossJoin(loya
 
 # --- Enrich with metadata ---
 final_kpis_df = final_kpis_df.withColumn("kpi_date", date_format(current_timestamp(), "yyyy-MM-dd HH:mm:ss"))
-final_kpis_df = final_kpis_df.withColumn("kpi_ts", date_format(current_timestamp(), "yyyy-MM-dd_HH-mm"))
+
 
 # Write to Redshift
 logger.info("Writing results to Redshift")
