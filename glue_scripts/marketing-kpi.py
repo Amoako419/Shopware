@@ -13,7 +13,14 @@ logger.setLevel(logging.INFO)
 
 # Glue context
 logger.info("Initializing Glue job")
-args = getResolvedOptions(sys.argv, ["JOB_NAME"])
+args = getResolvedOptions(sys.argv, [
+    "JOB_NAME",
+    "redshift_url",
+    "redshift_database",
+    "redshift_user",
+    "redshift_password",
+    "redshift_table"
+])
 sc = SparkContext()
 glueContext = GlueContext(sc)
 spark = glueContext.spark_session
@@ -88,20 +95,20 @@ logger.info("Combining KPI metrics")
 final_kpis_df = engagement_score_df.crossJoin(session_metrics_df).crossJoin(loyalty_df)
 
 # --- Enrich with metadata ---
-final_kpis_df = final_kpis_df.withColumn("kpi_date", date_format(current_timestamp(), "yyyy-MM-dd HH:mm:ss"))# --- Save to S3 ---
-logger.info("Preparing to save results")
-# --- Save as Delta Table ---
-# Add partition column with formatted timestamp
-final_kpis_df = final_kpis_df.withColumn("kpi_ts", date_format(current_timestamp(), "yyyy-MM-dd_HH-mm"))
+final_kpis_df = final_kpis_df.withColumn("kpi_date", date_format(current_timestamp(), "yyyy-MM-dd HH:mm:ss"))
 
-# Write as Delta with partitioning
-logger.info("Writing results to S3")
+
+# Write to Redshift
+logger.info("Writing results to Redshift")
+redshift_url = f"jdbc:redshift://{args['redshift_url']}/{args['redshift_database']}"
 final_kpis_df.write \
-    .format("delta") \
-    .mode("overwrite") \
-    .option("overwriteSchema", "true") \
-    .partitionBy("kpi_ts") \
-    .save("s3://shopware-gold-layer-125/market-kpis/")
+    .format("jdbc") \
+    .option("url", redshift_url) \
+    .option("dbtable", args['redshift_table']) \
+    .option("user", args['redshift_user']) \
+    .option("password", args['redshift_password']) \
+    .mode("append") \
+    .save()
 
 # Unpersist cached DataFrames
 web_logs.unpersist()

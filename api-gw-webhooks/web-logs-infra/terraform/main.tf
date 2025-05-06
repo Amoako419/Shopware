@@ -10,7 +10,7 @@ variable "account" {
 }
 
 variable "stream_name" {
-  description = "Kinesis Firehose delivery stream name"
+  description = "Kinesis Data Stream name"
 }
 
 variable "subnet_ids" {
@@ -124,18 +124,26 @@ resource "aws_iam_role_policy" "firehose_s3_policy" {
 }
 
 // ================================
-// Kinesis Firehose Delivery Stream
+// Kinesis Data Stream
 // ================================
-resource "aws_kinesis_firehose_delivery_stream" "web_firehose_stream" {
-  name        = var.stream_name
-  destination = "extended_s3"
+resource "aws_kinesis_stream" "web_stream" {
+  name             = var.stream_name
+  shard_count      = 1
+  retention_period = 24
 
-  extended_s3_configuration {
-    role_arn           = aws_iam_role.firehose_role.arn
-    bucket_arn         = aws_s3_bucket.firehose_bucket.arn
-    buffering_size     = 4
-    buffering_interval = 200
-    prefix             = "logs/"
+  stream_mode_details {
+    stream_mode = "PROVISIONED"
+  }
+
+  shard_level_metrics = [
+    "IncomingBytes",
+    "OutgoingBytes",
+    "WriteProvisionedThroughputExceeded"
+  ]
+
+  tags = {
+    Environment = "production"
+    Service     = "web-logs"
   }
 }
 
@@ -162,7 +170,7 @@ resource "aws_iam_role_policy" "apigw_firehose_policy" {
     Statement = [{
       Effect   = "Allow",
       Action   = ["firehose:PutRecord","firehose:PutRecordBatch"],
-      Resource = aws_kinesis_firehose_delivery_stream.web_firehose_stream.arn
+      Resource = aws_kinesis_stream.web_stream.arn
     }]
   })
 }
@@ -181,10 +189,10 @@ resource "aws_apigatewayv2_api" "http_api" {
 }
 
 // ================================
-// Lambda Proxy for API Gateway to Firehose
+// Lambda Proxy for API Gateway to Kinesis
 // ================================
 resource "aws_iam_role" "lambda_role" {
-  name = "web-api-firehose-lambda-role"
+  name = "web-logs-api-kinesis-lambda-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -195,18 +203,18 @@ resource "aws_iam_role" "lambda_role" {
   })
 }
 
-resource "aws_iam_role_policy" "lambda_firehose_policy" {
-  name = "web-logs-lambda-firehose-policy"
+resource "aws_iam_role_policy" "lambda_kinesis_policy" {
+  name = "web-logs-lambda-kinesis-policy"
   role = aws_iam_role.lambda_role.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect = "Allow"
       Action = [
-        "firehose:PutRecord",
-        "firehose:PutRecordBatch"
+        "kinesis:PutRecord",
+        "kinesis:PutRecords"
       ]
-      Resource = [aws_kinesis_firehose_delivery_stream.web_firehose_stream.arn]
+      Resource = [aws_kinesis_stream.web_stream.arn]
     }]
   })
 }
@@ -218,14 +226,15 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
 
 resource "aws_lambda_function" "proxy" {
   filename         = "../proxy/index.zip"
-  function_name    = "web-logs-firehose-proxy"
+  function_name    = "web-logs-kinesis-proxy"
   role            = aws_iam_role.lambda_role.arn
   handler         = "index.handler"
   runtime         = "nodejs18.x"
   
   environment {
     variables = {
-      DELIVERY_STREAM = aws_kinesis_firehose_delivery_stream.web_firehose_stream.name
+      STREAM_NAME = aws_kinesis_stream.web_stream.name
+      STREAM_TYPE = "kinesis"
     }
   }
 }
@@ -245,7 +254,7 @@ resource "aws_apigatewayv2_integration" "firehose" {
   integration_uri        = aws_lambda_function.proxy.invoke_arn
   integration_method     = "POST"  # Required for Lambda proxy integration
   payload_format_version = "2.0"
-  description            = "Lambda proxy integration for Firehose"
+  description            = "Lambda proxy integration for Kinesis"
 }
 
 resource "aws_apigatewayv2_route" "webhook" {
@@ -294,15 +303,18 @@ resource "aws_iam_role" "ecs_task_role" {
     }]
   })
 }
-resource "aws_iam_role_policy" "ecs_task_firehose" {
-  name   = "web-logs-ecsTaskFirehosePolicy"
+resource "aws_iam_role_policy" "ecs_task_kinesis" {
+  name   = "web-logs-ecs-task-kinesis-policy"
   role   = aws_iam_role.ecs_task_role.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow",
-      Action   = ["firehose:PutRecord","firehose:PutRecordBatch"],
-      Resource = aws_kinesis_firehose_delivery_stream.web_firehose_stream.arn
+      Action   = [
+        "kinesis:PutRecord",
+        "kinesis:PutRecords"
+      ]
+      Resource = [aws_kinesis_stream.web_stream.arn]
     }]
   })
 }
@@ -365,9 +377,9 @@ output "bucket_name" {
   description = "S3 bucket where Firehose deliveries land"
 }
 
-output "delivery_stream" {
-  value       = aws_kinesis_firehose_delivery_stream.web_firehose_stream.name
-  description = "Kinesis Firehose delivery stream name"
+output "stream_name" {
+  value       = aws_kinesis_stream.web_stream.name
+  description = "Kinesis Data Stream name"
 }
 
 output "webhook_url" {
