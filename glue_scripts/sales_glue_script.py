@@ -7,7 +7,7 @@ from pyspark.context import SparkContext
 from awsglue.context import GlueContext
 from awsglue.job import Job
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_unixtime, col, sum, avg, count, when, to_date, lit, coalesce
+from pyspark.sql.functions import from_unixtime, col, sum, avg, count, when, to_date, lit, coalesce, round
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, FloatType, LongType, DoubleType
 
 
@@ -65,14 +65,13 @@ def read_data(spark, pos_path, inventory_path, pos_schema, inventory_schema):
         pos_df = (spark.read
                   .schema(pos_schema)
                   .parquet(pos_path)
-                  .filter(to_date(from_unixtime(col("timestamp") / 1000)).isNotNull()))
+                  .filter(to_date(from_unixtime(col("timestamp"))).isNotNull()))
         logger.info(f"Successfully read POS data from {pos_path} with {pos_df.count()} records.")
         
         inventory_df = (spark.read
                         .schema(inventory_schema)
                         .parquet(inventory_path)
-                        .withColumn("last_updated", col("last_updated").cast(LongType()))
-                        .filter(to_date(from_unixtime(col("last_updated") / 1000)).isNotNull()))
+                        .filter(to_date(from_unixtime(col("last_updated"))).isNotNull()))
         logger.info(f"Successfully read Inventory data from {inventory_path} with {inventory_df.count()} records.")
         
         return pos_df, inventory_df
@@ -83,11 +82,14 @@ def read_data(spark, pos_path, inventory_path, pos_schema, inventory_schema):
 def compute_total_sales(pos_df):
     """Compute Total Sales by Region (store_id) and Product."""
     try:
-        total_sales_df = (pos_df.groupBy(
-                            to_date(from_unixtime(col("timestamp") / 1000)).alias("date"),
+        total_sales_df = (
+                         pos_df
+                         .withColumn("date", to_date(from_unixtime(col("timestamp")))) \
+                         .groupBy(
+                            "date",
                             col("store_id"),
                             col("product_id"))
-                         .agg(sum("revenue").alias("total_sales")))
+                         .agg(round(sum("revenue"), 3).alias("total_sales")))
                          
         logger.info("Computed Total Sales KPI.")
         return total_sales_df
@@ -98,8 +100,11 @@ def compute_total_sales(pos_df):
 def compute_stock_availability(inventory_df):
     """Compute Stock Availability (% of products above restock threshold)."""
     try:
-        stock_availability_df = (inventory_df.groupBy(
-                                    to_date(from_unixtime(col("last_updated") / 1000)).alias("date"),
+        stock_availability_df = (
+                                 inventory_df
+                                 .withColumn("date", to_date(from_unixtime(col("last_updated")))) 
+                                 .groupBy(
+                                    "date",
                                     col("product_id"))
                                 .agg(
                                     avg(when(col("stock_level") > coalesce(col("restock_threshold"), lit(0.0)), 1.0)
@@ -116,20 +121,28 @@ def compute_product_turnover(pos_df, inventory_df):
     """Compute Product Turnover Rate (units sold / avg stock level)."""
     try:
         # Aggregate units sold from POS
-        units_sold_df = (pos_df.groupBy(
-                            to_date(from_unixtime(col("timestamp") / 1000)).alias("date"),
+        units_sold_df = (
+                         pos_df
+                         .withColumn("date", to_date(from_unixtime(col("timestamp"))))\
+                         .groupBy(
+                            "date",
                             col("product_id"))
                         .agg(sum("quantity").alias("units_sold")))
         
         # Aggregate average stock level from Inventory
-        avg_stock_df = (inventory_df.groupBy(
-                            to_date(from_unixtime(col("last_updated") / 1000)).alias("date"),
+        avg_stock_df = (
+                        inventory_df
+                        .withColumn("date", to_date(from_unixtime(col("last_updated"))))\
+                        .groupBy(
+                            "date",
                             col("product_id"))
                       .agg(avg("stock_level").alias("avg_stock_level")))
         
         # Join and compute turnover rate
-        turnover_df = (units_sold_df.join(avg_stock_df, ["date", "product_id"], "inner")
-                      .withColumn("turnover_rate", col("units_sold") / col("avg_stock_level"))
+        turnover_df = (
+                      units_sold_df
+                      .join(avg_stock_df, ["date", "product_id"], "inner")
+                      .withColumn("turnover_rate", round((col("units_sold") / col("avg_stock_level")),3))
                       .select("date", "product_id", "turnover_rate"))
         logger.info("Computed Product Turnover Rate KPI.")
         return turnover_df
@@ -149,7 +162,7 @@ def save_to_redshift(spark, df, jdbc_url, redshift_user, redshift_password, tabl
           .option("user", redshift_user) \
           .option("password", redshift_password) \
           .option("driver", "com.amazon.redshift.jdbc42.Driver") \
-          .mode("append") \
+          .mode("overwrite") \
           .save()
         logger.info(f"Successfully saved KPIs to Redshift table {table_name}.")
     except Exception as e:
