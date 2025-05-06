@@ -195,7 +195,7 @@ def lambda_handler(event, context):
 
     logger.info(f"Received event with {len(event['Records'])} records")
     
-    source_prefix = "pos_data/pos_landing_data/"
+    source_prefix = "pos/"
     destination_prefix = "bronze-pos/"
     processed_records = 0
     failed_records = 0
