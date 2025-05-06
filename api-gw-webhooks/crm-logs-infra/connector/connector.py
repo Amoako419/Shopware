@@ -11,15 +11,15 @@ from botocore.exceptions import BotoCoreError, ClientError
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# variables
+# Variables
 SOURCE_URL = "http://18.203.232.58:8000/api/customer-interaction/"
-STREAM_NAME = "crm-logs-firehose"
+STREAM_NAME = "crm-logs-stream"  # Changed from firehose to a streams name
 REGION = "eu-west-1"
-POLL_INTERVAL =  5
-BATCH_SIZE = 500
+POLL_INTERVAL = 5
+BATCH_SIZE = 200  
 
-# AWS Firehose client
-firehose = boto3.client("firehose", region_name=REGION)
+# AWS Kinesis client
+kinesis = boto3.client("kinesis", region_name=REGION)
 
 def fetch_data():
     try:
@@ -31,46 +31,63 @@ def fetch_data():
         logger.error(f"Failed to fetch data: {e}")
         return []
 
-def send_to_firehose(records):
+def send_to_kinesis(records):
     if not records:
         return
-
+    
     try:
+        # Kinesis Data Streams requires a PartitionKey for each record
         entries = [{
-            "Data": json.dumps(record) + "\n"
+            "Data": json.dumps(record).encode('utf-8'),
+            "PartitionKey": str(record.get('id', hash(json.dumps(record))))  # Use id as partition key if available
         } for record in records]
-
-        response = firehose.put_record_batch(
-            DeliveryStreamName=STREAM_NAME,
-            Records=entries
+        
+        # Kinesis PutRecords API call
+        response = kinesis.put_records(
+            Records=entries,
+            StreamName=STREAM_NAME
         )
-
-        failed = response['FailedPutCount']
+        
+        failed = response.get('FailedRecordCount', 0)
         if failed:
-            logger.warning(f"{failed} records failed to send.")
+            # Log details about failed records
+            failed_records = [
+                (i, response['Records'][i].get('ErrorCode'), response['Records'][i].get('ErrorMessage'))
+                for i in range(len(response['Records']))
+                if 'ErrorCode' in response['Records'][i]
+            ]
+            logger.warning(f"{failed} records failed to send: {failed_records}")
         else:
-            logger.info(f"Successfully sent {len(records)} records.")
+            logger.info(f"Successfully sent {len(records)} records to Kinesis Data Stream.")
+            
     except (BotoCoreError, ClientError) as e:
-        logger.error(f"Firehose error: {e}")
+        logger.error(f"Kinesis error: {e}")
 
 def main():
-    logger.info("Starting connector loop.")
+    logger.info(f"Starting connector loop. Sending to Kinesis Data Stream: {STREAM_NAME}")
     buffer = []
-
+    
     while True:
-        new_data = fetch_data()
-        buffer.extend(new_data)
+        try:
+            new_data = fetch_data()
+            logger.info(f"Fetched {len(new_data)} new records")
+            
+            buffer.extend(new_data)
+            
+            if len(buffer) >= BATCH_SIZE:
+                # Send full batches
+                send_to_kinesis(buffer[:BATCH_SIZE])
+                buffer = buffer[BATCH_SIZE:]
+            elif new_data:
+                # Send partial buffer if new data came in
+                send_to_kinesis(buffer)
+                buffer = []
+                
+            time.sleep(POLL_INTERVAL)
+            
+        except Exception as e:
+            logger.error(f"Error in main processing loop: {e}")
+            time.sleep(POLL_INTERVAL)  # Wait before retry
 
-        if len(buffer) >= BATCH_SIZE:
-            send_to_firehose(buffer[:BATCH_SIZE])
-            buffer = buffer[BATCH_SIZE:]
-
-        elif new_data:
-            # Send partial buffer if new data came in
-            send_to_firehose(buffer)
-            buffer = []
-
-        time.sleep(POLL_INTERVAL)
-
-if __name__ == "__main__":
+if __name__ == "__main__":  # Fixed syntax error here
     main()

@@ -8,8 +8,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the connector script
+# Copy the connector script and env file
 COPY connector.py .
+COPY .env .
 
 # Run the connector
 CMD ["python", "connector.py"]
