@@ -195,7 +195,7 @@ def lambda_handler(event, context):
 
     logger.info(f"Received event with {len(event['Records'])} records")
     
-    source_prefix = "inventory/inventory_landing_data/"
+    source_prefix = "inventory/"
     destination_prefix = "bronze-inventory/"
     processed_records = 0
     failed_records = 0
@@ -205,6 +205,12 @@ def lambda_handler(event, context):
             # Parse SQS message
             message_body = json.loads(record['body'])
             logger.info(f"Processing SQS message: {record['messageId']}")
+
+            # Skip test events (for local testing)            
+            # Ignore s3:TestEvent messages
+            if message_body.get('Event') == 's3:TestEvent':
+                logger.warning("Skipping s3:TestEvent message (test event)")
+                continue
 
             # S3 events may be wrapped in an SNS or direct S3 notification
             if 'Records' in message_body:
