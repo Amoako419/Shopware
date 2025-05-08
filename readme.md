@@ -1,5 +1,9 @@
 # Shopware Data Pipeline
 
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Python Version](https://img.shields.io/badge/python-3.11%2B-blue)
+![AWS](https://img.shields.io/badge/AWS-%23FF9900.svg?style=for-the-badge&logo=amazon-aws&logoColor=white)
+
 ## Overview
 
 The Shopware Data Pipeline is a comprehensive data engineering solution designed to collect, process, and analyze data from four distinct sources—two streaming and two batch—to support decision-making across various Shopware teams. The pipeline follows the Medallion Architecture (Bronze, Silver, Gold layers) to transform raw data into actionable business insights, enabling teams to track key performance indicators (KPIs) and leverage data via ad-hoc querying, dashboards, and data marts.
@@ -117,20 +121,13 @@ The pipeline ingests data from four sources:
 
 1. **Clone the Repository**:
    ```bash
-   git clone <repository-url>
-   cd shopware-data-pipeline
+   git clone https://github.com/Amoako419/Shopware.git
+   cd shopware
    ```
 
 2. **Build and Push Docker Images**:
    ```bash
-   # For POS Data Connector
-   cd batch-connectors/pos-infra/scripts
-   ./build_push_ecr.sh
-   
-   # For Inventory Data Connector
-   cd batch-connectors/inventory-infra/scripts
-   ./build_push_ecr.sh
-   
+
    # For CRM Logs Connector
    cd api-gw-webhooks/crm-logs-infra/scripts
    ./build_push_ecr.sh
@@ -142,15 +139,6 @@ The pipeline ingests data from four sources:
 
 3. **Deploy Infrastructure with Terraform**:
    ```bash
-   # For POS Infrastructure
-   cd batch-connectors/pos-infra/terraform
-   terraform init
-   terraform apply
-   
-   # For Inventory Infrastructure
-   cd batch-connectors/inventory-infra/terraform
-   terraform init
-   terraform apply
    
    # For CRM Logs Infrastructure
    cd api-gw-webhooks/crm-logs-infra/terraform
@@ -263,3 +251,45 @@ Key configuration files:
 ## Contact
 
 For questions or support, please contact the data engineering team.
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+### Code Style
+- Python code should follow PEP 8
+- Use meaningful variable and function names
+- Include docstrings for all functions and classes
+- Add type hints where applicable
+
+### Testing
+- Write unit tests for new features
+- Ensure all tests pass before submitting PR
+- Include integration tests where necessary
+
+### Security
+- Never commit sensitive credentials
+- Use AWS Secrets Manager for sensitive data
+- Follow least privilege principle for IAM roles
+
+## Versioning
+
+We use [SemVer](http://semver.org/) for versioning. For the versions available, see the [tags on this repository](https://github.com/Amoako419/Shopware/tags).
+
+## Authors
+
+* **Heskey Amoako** - *Initial work*
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
+
+## Acknowledgments
+
+* AWS Documentation
+* Medallion Architecture Best Practices
+* Data Engineering Community
