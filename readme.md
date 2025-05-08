@@ -284,7 +284,7 @@ We use [SemVer](http://semver.org/) for versioning. For the versions available, 
 
 * **Heskey Amoako** - *Initial work*
 * **Andrew Marfo** - *Contributor*
-
+* **Charles Adu Nkansah** - *Contributor*
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
