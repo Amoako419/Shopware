@@ -283,6 +283,7 @@ We use [SemVer](http://semver.org/) for versioning. For the versions available, 
 ## Authors
 
 * **Heskey Amoako** - *Initial work*
+* **Andrew Marfo** - *Contributor*
 
 ## License
 
