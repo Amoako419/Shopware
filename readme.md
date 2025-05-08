@@ -2,99 +2,106 @@
 
 ## Overview
 
-The Shopware Data Pipeline is a comprehensive data engineering solution designed to collect, process, and analyze web traffic and customer interaction data from Shopware e-commerce platforms. The pipeline follows the Medallion Architecture (Bronze, Silver, Gold layers) to transform raw data into valuable business insights.
+The Shopware Data Pipeline is a comprehensive data engineering solution designed to collect, process, and analyze data from four distinct sources—two streaming and two batch—to support decision-making across various Shopware teams. The pipeline follows the Medallion Architecture (Bronze, Silver, Gold layers) to transform raw data into actionable business insights, enabling teams to track key performance indicators (KPIs) and leverage data via ad-hoc querying, dashboards, and data marts.
+
+## Project Objectives
+
+1. **Data Integration**: Integrate data from multiple sources, including batch (POS, Inventory) and streaming (Web Traffic, CRM Interactions).
+2. **Data Transformation**: Clean and transform raw data to meet business needs.
+3. **Data Accessibility**: Provide teams with access to data via ad-hoc querying, dashboards, or data marts.
+4. **Data Storage**: Organize data efficiently using data lakes, data warehouses, and data marts.
+5. **KPI Tracking**: Enable teams to track department-specific KPIs.
 
 ## Architecture
 
 The architecture follows a modern data lakehouse approach with three distinct layers:
 
-1. **Bronze Layer (Raw Data)**: Initial data ingestion from source systems
-2. **Silver Layer (Processed Data)**: Cleaned, validated, and transformed data
-3. **Gold Layer (Business Insights)**: Aggregated data ready for analytics and reporting
+1. **Bronze Layer (Raw Data)**: Initial data ingestion from source systems.
+2. **Silver Layer (Processed Data)**: Cleaned, validated, and transformed data.
+3. **Gold Layer (Business Insights)**: Aggregated data ready for analytics and reporting, stored in Redshift and S3.
 
 ![Shopware Data Pipeline Architecture](architecture-diagram-medallion.jpg)
 
 ## Data Sources
 
-The pipeline ingests data from two primary sources:
-- **Web Traffic API**: Captures user behavior, page views, and session data
-- **CRM Interaction API**: Captures customer interactions and loyalty program activities
+The pipeline ingests data from four sources:
+
+- **POS Data (Batch, Daily)**: Sales transactions including quantity, revenue, discounts, etc. Used by Sales, Operations, and Finance teams.
+- **Inventory Management Data (Batch, Hourly)**: Real-time inventory levels and restocking data. Used by Operations and Sales teams.
+- **Web Traffic Logs (Streaming, Real-Time)**: User behavior, page views, and session data. Used by Marketing and Data Analysts.
+- **CRM Interactions (Streaming, Real-Time)**: Customer interactions and feedback. Used by Marketing and Customer Support teams.
 
 ## Components
 
 ### Data Ingestion
 
-1. **ECS Fargate Connectors**:
-   - Python applications running in Docker containers
-   - Poll source APIs at regular intervals (every 5 seconds)
-   - Buffer and batch data before sending to Kinesis
-
-2. **API Gateway Webhooks**:
-   - HTTP endpoints for external systems to push data
-   - Lambda functions process incoming requests
-   - Data is forwarded to Kinesis Data Streams
+1. **Batch Data (POS, Inventory)**:
+   - **ECS Fargate Connectors**: Python applications in Docker containers poll source APIs at regular intervals (daily for POS, hourly for Inventory).
+   - Data is sent to Kinesis Data Streams for processing.
+2. **Streaming Data (Web Traffic, CRM Interactions)**:
+   - **API Gateway Webhooks**: HTTP endpoints for external systems to push real-time data.
+   - Data is forwarded to Kinesis Data Streams.
 
 ### Data Storage & Processing
 
 1. **Kinesis Data Streams**:
-   - Real-time data streaming for both web and CRM data
-   - Configured with proper sharding for scalability
-
-2. **Kinesis Data Analytics**:
-   - Real-time processing of streaming data
-   - Detects patterns and anomalies in the data flow
-
-3. **Kinesis Data Firehose**:
-   - Delivers data to S3 for long-term storage
-   - Configures data format and partitioning
-
-4. **S3 Data Lake**:
-   - Stores data in the medallion architecture pattern
-   - Bronze bucket: Raw data
-   - Silver bucket: Processed data
-   - Gold bucket: Analytics-ready data
-
-5. **AWS Glue**:
-   - ETL jobs for data transformation between layers
-   - Data Catalog for metadata management
-   - Crawlers to discover and catalog data
-
-6. **AWS Lambda**:
-   - Event-driven processing
-   - Connects various components of the pipeline
-   - Handles API Gateway requests
+   - Handles real-time data streaming for Web Traffic and CRM Interactions.
+   - Configured with proper sharding for scalability.
+2. **Kinesis Data Firehose**:
+   - Delivers data to S3 for long-term storage in the Bronze layer.
+   - Configures data format and partitioning.
+3. **S3 Data Lake**:
+   - Stores data in the Medallion Architecture:
+     - **Bronze Bucket**: Raw data from all sources.
+     - **Silver Bucket**: Processed data after transformation.
+     - **Gold Bucket**: Analytics-ready data for reporting.
+4. **AWS Glue**:
+   - ETL jobs for data transformation between layers.
+   - Data Catalog for metadata management.
+   - Crawlers to discover and catalog data.
+5. **AWS Lambda**:
+   - Processes streaming data (Web Traffic, CRM Interactions).
+   - Computes KPIs for Marketing and Customer Support teams.
+   - Saves results to Amazon Redshift.
+6. **EventBridge and Step Functions (Batch Data)**:
+   - **First EventBridge Trigger**: Detects new batch data in the Bronze layer and triggers a Step Function to transform and move data to the Silver layer.
+   - **Second EventBridge Trigger**: Detects processed data in the Silver layer and triggers another Step Function to compute KPIs, saving results to Redshift and the Gold layer in S3.
+7. **Amazon Redshift**:
+   - Stores KPI results for both streaming and batch data.
+   - Provides a data warehouse for business-wide queries.
 
 ### Analytics & Visualization
 
 1. **Amazon Athena**:
-   - SQL queries against data in S3
-   - Ad-hoc analysis capabilities
-
+   - SQL queries against data in S3 for ad-hoc analysis.
 2. **Amazon SageMaker**:
-   - Machine learning models for predictive analytics
-   - Customer segmentation and behavior analysis
-
-3. **Business Intelligence Tools**:
-   - Connect to processed data for dashboards and reports
+   - Machine learning models for predictive analytics (e.g., customer segmentation).
+3. **Power BI**:
+   - Connects to Redshift for dashboard visualizations of KPIs.
+4. **Data Marts**:
+   - Team-specific aggregated data for Sales, Marketing, and Finance teams.
 
 ## Key Performance Indicators (KPIs)
 
-The pipeline calculates several business-critical KPIs:
+### Sales Team (via POS, Inventory Data)
+- Total Sales by Region/Product
+- Stock Availability
+- Product Turnover Rate
 
-1. **Marketing KPIs**:
-   - Customer Engagement Score
-   - Session Duration & Bounce Rate
-   - Loyalty Activity Rate
+### Marketing Team (via Web Traffic, CRM Interactions)
+- Customer Engagement Score
+- Session Duration & Bounce Rate
+- Loyalty Activity Rate
 
-2. **Sales KPIs**:
-   - Conversion Rates
-   - Average Order Value
-   - Stock Availability
+### Operations Team (via Inventory, POS)
+- Inventory Turnover
+- Restock Frequency
+- Stockout Alerts
 
-3. **Operations KPIs**:
-   - Inventory Turnover
-   - Restock Frequency
-   - Stockout Alerts
+### Customer Support Team (via CRM Interactions)
+- Feedback Score
+- Interaction Volume by Type
+- Time-to-Resolution
 
 ## Setup Instructions
 
@@ -116,6 +123,14 @@ The pipeline calculates several business-critical KPIs:
 
 2. **Build and Push Docker Images**:
    ```bash
+   # For POS Data Connector
+   cd batch-connectors/pos-infra/scripts
+   ./build_push_ecr.sh
+   
+   # For Inventory Data Connector
+   cd batch-connectors/inventory-infra/scripts
+   ./build_push_ecr.sh
+   
    # For CRM Logs Connector
    cd api-gw-webhooks/crm-logs-infra/scripts
    ./build_push_ecr.sh
@@ -127,6 +142,16 @@ The pipeline calculates several business-critical KPIs:
 
 3. **Deploy Infrastructure with Terraform**:
    ```bash
+   # For POS Infrastructure
+   cd batch-connectors/pos-infra/terraform
+   terraform init
+   terraform apply
+   
+   # For Inventory Infrastructure
+   cd batch-connectors/inventory-infra/terraform
+   terraform init
+   terraform apply
+   
    # For CRM Logs Infrastructure
    cd api-gw-webhooks/crm-logs-infra/terraform
    terraform init
@@ -138,20 +163,29 @@ The pipeline calculates several business-critical KPIs:
    terraform apply
    ```
 
-4. **Deploy Glue Jobs**:
-   - Upload Glue scripts to S3
-   - Create and configure Glue jobs using the AWS Console or Terraform
+4. **Deploy Glue Jobs and Step Functions**:
+   - Upload Glue scripts to S3.
+   - Create and configure Glue jobs and Step Functions using the AWS Console or Terraform.
+   - Configure EventBridge rules to trigger Step Functions for batch data processing.
 
-5. **Verify Deployment**:
-   - Check AWS Console to ensure all resources are created
-   - Test webhook endpoints
-   - Monitor CloudWatch logs for connector applications
+5. **Set Up Redshift and Power BI**:
+   - Create a Redshift cluster and configure access.
+   - Connect Power BI to Redshift for dashboard creation.
+
+6. **Verify Deployment**:
+   - Check AWS Console to ensure all resources are created.
+   - Test webhook endpoints for streaming data.
+   - Monitor CloudWatch logs for connector applications and Step Functions.
 
 ### Configuration
 
 Key configuration files:
+- `batch-connectors/pos-infra/terraform/terraform.tfvars`: POS pipeline configuration
+- `batch-connectors/inventory-infra/terraform/terraform.tfvars`: Inventory pipeline configuration
 - `api-gw-webhooks/crm-logs-infra/terraform/terraform.tfvars`: CRM pipeline configuration
 - `api-gw-webhooks/web-logs-infra/terraform/terraform.tfvars`: Web traffic pipeline configuration
+- `batch-connectors/pos-infra/connector/.env`: POS connector environment variables
+- `batch-connectors/inventory-infra/connector/.env`: Inventory connector environment variables
 - `api-gw-webhooks/crm-logs-infra/connector/.env`: CRM connector environment variables
 - `api-gw-webhooks/web-logs-infra/connector/.env`: Web connector environment variables
 
@@ -159,96 +193,53 @@ Key configuration files:
 
 ### Bronze Layer (Data Ingestion)
 
-1. **Data Collection**:
+1. **Batch Data Collection (POS, Inventory)**:
    - ECS Fargate connectors poll source APIs:
-     - Web traffic: `http://18.203.232.58:8000/api/web-traffic/`
-     - CRM data: `http://18.203.232.58:8000/api/customer-interaction/`
-   - Data is sent to Kinesis Data Streams
-   - External systems can push data via API Gateway webhooks
-
-2. **Raw Storage**:
-   - Kinesis Firehose delivers raw data to S3 bronze buckets
-   - Data is partitioned by date
+     - POS: Daily updates.
+     - Inventory: Hourly updates.
+   - Data is sent to Kinesis Data Streams and stored in S3 Bronze buckets.
+2. **Streaming Data Collection (Web Traffic, CRM Interactions)**:
+   - Real-time data pushed via API Gateway webhooks.
+   - Data is sent to Kinesis Data Streams and stored in S3 Bronze buckets.
 
 ### Silver Layer (Data Processing)
 
-1. **Data Cleaning & Validation**:
-   - AWS Glue jobs process raw data from bronze layer
-   - Data is validated, cleaned, and transformed
-   - Schema enforcement and data quality checks
-   - Results stored in S3 silver buckets
-
-2. **Data Catalog**:
-   - AWS Glue Crawlers catalog the processed data
-   - Tables are created in the Glue Data Catalog
+1. **Batch Data**:
+   - EventBridge detects new data in the Bronze layer.
+   - Triggers a Step Function to run AWS Glue jobs for cleaning, validation, and transformation.
+   - Results are stored in S3 Silver buckets.
+2. **Streaming Data**:
+   - AWS Lambda processes streaming data in real-time.
+   - Data is cleaned and transformed, then stored in S3 Silver buckets.
 
 ### Gold Layer (Analytics)
 
-1. **KPI Calculation**:
-   - Glue jobs calculate business KPIs:
-     - `marketing-kpi.py`: Marketing metrics
-     - `sales_glue_script.py`: Sales metrics
-     - `operations_kpis.py`: Operations metrics
-   - Results stored in S3 gold buckets
-
-2. **Analytics Access**:
-   - Amazon Athena for SQL queries
-   - Notebooks for data science workflows
-   - BI tools for dashboards
+1. **Batch Data**:
+   - EventBridge detects processed data in the Silver layer.
+   - Triggers a Step Function to compute KPIs using AWS Glue jobs.
+   - Results are stored in Redshift and S3 Gold buckets.
+2. **Streaming Data**:
+   - AWS Lambda computes KPIs for Marketing and Customer Support teams.
+   - Results are stored in Redshift.
+3. **Analytics Access**:
+   - Amazon Athena for SQL queries on S3 data.
+   - Power BI for dashboards connected to Redshift.
+   - Notebooks for data science workflows via SageMaker.
 
 ## Monitoring and Maintenance
 
 1. **CloudWatch Monitoring**:
-   - Logs from all components
-   - Metrics for Kinesis, Lambda, and ECS
-   - Alarms for critical thresholds
-
+   - Logs from all components.
+   - Metrics for Kinesis, Lambda, ECS, and Step Functions.
+   - Alarms for critical thresholds.
 2. **Error Handling**:
-   - Automatic retries in connectors
-   - Dead-letter queues for failed processing
-   - Error notifications via SNS
-
+   - Automatic retries in connectors.
+   - Dead-letter queues for failed processing.
+   - Error notifications via SNS.
 3. **Scaling**:
-   - ECS services scale based on CPU/memory usage
-   - Kinesis streams can be resharded for higher throughput
-   - Glue jobs configured with appropriate DPUs
-
-## Project Structure
-
-```
-shopware-data-pipeline/
-├── api-gw-webhooks/
-│   ├── crm-logs-infra/
-│   │   ├── connector/
-│   │   │   ├── connector.py       # Python script to poll CRM API
-│   │   │   ├── Dockerfile         # Container definition
-│   │   │   └── requirements.txt   # Python dependencies
-│   │   ├── scripts/
-│   │   │   └── build_push_ecr.sh  # Script to build and push Docker image
-│   │   └── terraform/
-│   │       ├── main.tf            # Infrastructure as code
-│   │       └── terraform.tfvars   # Configuration values
-│   └── web-logs-infra/
-│       ├── connector/
-│       │   ├── connector.py       # Python script to poll web traffic API
-│       │   ├── Dockerfile         # Container definition
-│       │   └── requirements.txt   # Python dependencies
-│       ├── scripts/
-│       │   └── build_push_ecr.sh  # Script to build and push Docker image
-│       └── terraform/
-│           ├── main.tf            # Infrastructure as code
-│           └── terraform.tfvars   # Configuration values
-├── lambda_functions/
-│   └── proxy/
-│       └── index.mjs              # Lambda function for API Gateway
-├── glue_scripts/
-│   ├── crm_kpi_processor.py       # Glue job for CRM data
-│   ├── marketing-kpi.py           # Glue job for marketing KPIs
-│   ├── operations_kpis.py         # Glue job for operations KPIs
-│   └── sales_glue_script.py       # Glue job for sales KPIs
-└── notebook/
-    └── test.ipynb                 # Example notebook for data analysis
-```
+   - ECS services scale based on CPU/memory usage.
+   - Kinesis streams can be resharded for higher throughput.
+   - Glue jobs configured with appropriate DPUs.
 
 ## Troubleshooting
 
@@ -268,31 +259,6 @@ shopware-data-pipeline/
    - Verify Glue crawlers have run successfully
    - Check S3 bucket permissions
    - Ensure data partitioning is correctly configured
-
-## Security Considerations
-
-1. **Data Protection**:
-   - S3 buckets configured with encryption at rest
-   - HTTPS for all API communications
-   - IAM roles with least privilege principle
-
-2. **Access Control**:
-   - Fine-grained IAM policies
-   - Network security groups for ECS tasks
-   - API Gateway with appropriate authorization
-
-## Future Enhancements
-
-1. **Real-time Dashboards**:
-   - Implement real-time visualization of KPIs
-
-2. **Machine Learning Integration**:
-   - Predictive analytics for customer behavior
-   - Anomaly detection for sales patterns
-
-3. **Data Quality Framework**:
-   - Automated data quality checks
-   - Data lineage tracking
 
 ## Contact
 
