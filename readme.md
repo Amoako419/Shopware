@@ -40,20 +40,24 @@ The pipeline ingests data from four sources:
 ### Data Ingestion
 
 1. **Batch Data (POS, Inventory)**:
-   - **ECS Fargate Connectors**: Python applications in Docker containers poll source APIs at regular intervals (daily for POS, hourly for Inventory).
-   - Data is sent to Kinesis Data Streams for processing.
+   - **S3 Data Lake**: Raw data lands directly in S3 bronze buckets.
+   - **Lambda Functions**: Process and move data from raw buckets to silver layer.
+   - Processed data flows through the medallion architecture.
+
 2. **Streaming Data (Web Traffic, CRM Interactions)**:
-   - **API Gateway Webhooks**: HTTP endpoints for external systems to push real-time data.
-   - Data is forwarded to Kinesis Data Streams.
+   - **ECS Fargate Services**: Containerized applications continuously poll external APIs.
+   - **Data Streaming**: Fetched data is sent to Kinesis Data Streams.
+   - **Lambda Functions**: Process and validate the streaming data.
 
 ### Data Storage & Processing
 
 1. **Kinesis Data Streams**:
    - Handles real-time data streaming for Web Traffic and CRM Interactions.
    - Configured with proper sharding for scalability.
-2. **Kinesis Data Firehose**:
-   - Delivers data to S3 for long-term storage in the Bronze layer.
-   - Configures data format and partitioning.
+2. **Amazon ECS (Fargate)**:
+   - Runs Docker containers for batch data connectors (POS, Inventory).
+   - Automatically scales based on CPU and memory usage.
+   - Connects to Kinesis Data Streams for data ingestion.
 3. **S3 Data Lake**:
    - Stores data in the Medallion Architecture:
      - **Bronze Bucket**: Raw data from all sources.
@@ -78,11 +82,9 @@ The pipeline ingests data from four sources:
 
 1. **Amazon Athena**:
    - SQL queries against data in S3 for ad-hoc analysis.
-2. **Amazon SageMaker**:
-   - Machine learning models for predictive analytics (e.g., customer segmentation).
-3. **Power BI**:
+2. **Power BI**:
    - Connects to Redshift for dashboard visualizations of KPIs.
-4. **Data Marts**:
+3. **Data Marts**:
    - Team-specific aggregated data for Sales, Marketing, and Finance teams.
 
 ## Key Performance Indicators (KPIs)
@@ -168,12 +170,8 @@ The pipeline ingests data from four sources:
 ### Configuration
 
 Key configuration files:
-- `batch-connectors/pos-infra/terraform/terraform.tfvars`: POS pipeline configuration
-- `batch-connectors/inventory-infra/terraform/terraform.tfvars`: Inventory pipeline configuration
 - `api-gw-webhooks/crm-logs-infra/terraform/terraform.tfvars`: CRM pipeline configuration
 - `api-gw-webhooks/web-logs-infra/terraform/terraform.tfvars`: Web traffic pipeline configuration
-- `batch-connectors/pos-infra/connector/.env`: POS connector environment variables
-- `batch-connectors/inventory-infra/connector/.env`: Inventory connector environment variables
 - `api-gw-webhooks/crm-logs-infra/connector/.env`: CRM connector environment variables
 - `api-gw-webhooks/web-logs-infra/connector/.env`: Web connector environment variables
 
@@ -285,6 +283,7 @@ We use [SemVer](http://semver.org/) for versioning. For the versions available, 
 * **Heskey Amoako** - *Initial work*
 * **Andrew Marfo** - *Contributor*
 * **Charles Adu Nkansah** - *Contributor*
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
