@@ -294,6 +294,7 @@ We use [SemVer](http://semver.org/) for versioning. For the versions available, 
 * **Heskey Amoako** - *Initial work*
 * **Andrew Marfo** - *Contributor*
 * **Charles Adu Nkansah** - *Contributor*
+* **Ann-Vanessa Lartey** - *Contributor*
 
 ## License
 
