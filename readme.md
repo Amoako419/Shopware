@@ -8,6 +8,10 @@
 
 The Shopware Data Pipeline is a comprehensive data engineering solution designed to collect, process, and analyze data from four distinct sources—two streaming and two batch—to support decision-making across various Shopware teams. The pipeline follows the Medallion Architecture (Bronze, Silver, Gold layers) to transform raw data into actionable business insights, enabling teams to track key performance indicators (KPIs) and leverage data via ad-hoc querying, dashboards, and data marts.
 
+#### High-Level Architecture
+![Shopware Data Pipeline Architecture](assets/images/architecture-diagram-High-level.jpg)
+
+
 ## Project Objectives
 
 1. **Data Integration**: Integrate data from multiple sources, including batch (POS, Inventory) and streaming (Web Traffic, CRM Interactions).
@@ -16,7 +20,7 @@ The Shopware Data Pipeline is a comprehensive data engineering solution designed
 4. **Data Storage**: Organize data efficiently using data lakes, data warehouses, and data marts.
 5. **KPI Tracking**: Enable teams to track department-specific KPIs.
 
-## Architecture
+## Medallion Architecture
 
 The architecture follows a modern data lakehouse approach with three distinct layers:
 
@@ -24,7 +28,7 @@ The architecture follows a modern data lakehouse approach with three distinct la
 2. **Silver Layer (Processed Data)**: Cleaned, validated, and transformed data.
 3. **Gold Layer (Business Insights)**: Aggregated data ready for analytics and reporting, stored in Redshift and S3.
 
-![Shopware Data Pipeline Architecture](architecture-diagram-medallion.jpg)
+![Shopware Data Pipeline Architecture](assets/images/medallion.png)
 
 ## Data Sources
 
@@ -37,6 +41,9 @@ The pipeline ingests data from four sources:
 
 ## Components
 
+### Detailed Architecture
+![Shopware Data Pipeline Architecture](assets/images/architecture-diagram-medallion.jpg)
+
 ### Data Ingestion
 
 1. **Batch Data (POS, Inventory)**:
@@ -45,14 +52,14 @@ The pipeline ingests data from four sources:
    - Processed data flows through the medallion architecture.
 
 2. **Streaming Data (Web Traffic, CRM Interactions)**:
+    - **API Gateway Webhooks**: HTTP endpoints that:
+     - Accept pushed data via webhooks
+     - Use Lambda proxies to forward data to Kinesis Data Streams 
    - **ECS Fargate Connectors**: Containerized applications running in ECS Fargate that:
      - Poll web traffic data from `/api/web-traffic/` endpoint
      - Poll CRM interaction data from `/api/customer-interaction/` endpoint
      - Send collected data to Kinesis Data Streams
-   - **API Gateway Webhooks**: HTTP endpoints that:
-     - Accept pushed data via webhooks
-     - Use Lambda proxies to forward data to Kinesis Data Streams
-   - All streaming data is processed by Lambda functions and stored in S3 Bronze buckets.
+   - All streaming data is processed by Lambda functions.
 
 ### Data Storage & Processing
 
