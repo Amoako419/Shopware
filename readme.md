@@ -197,7 +197,7 @@ Key configuration files:
    - **API Gateway Webhooks**: HTTP endpoints that:
      - Accept pushed data via webhooks
      - Use Lambda proxies to forward data to Kinesis Data Streams
-   - All streaming data is processed by Lambda functions and stored in S3 Bronze buckets.
+   - All streaming data is processed by Lambda functions.
 
 ### Silver Layer (Data Processing)
 
