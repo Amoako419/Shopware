@@ -199,7 +199,7 @@ Key configuration files:
    - Lambda moves data from the landing bucket in parquet format:
      - POS: Daily updates.
      - Inventory: Hourly updates.
-   - Data is sent to Kinesis Data Streams and stored in S3 Bronze buckets.
+   - Data is stored in S3 Bronze buckets.
 2. **Streaming Data Collection (Web Traffic, CRM Interactions)**:
    - **ECS Fargate Connectors**: Containerized applications running in ECS Fargate that:
      - Poll web traffic data from `/api/web-traffic/` endpoint
@@ -208,7 +208,7 @@ Key configuration files:
    - **API Gateway Webhooks**: HTTP endpoints that:
      - Accept pushed data via webhooks
      - Use Lambda proxies to forward data to Kinesis Data Streams
-   - All streaming data is processed by Lambda functions and stored in S3 Bronze buckets.
+   - All streaming data is processed by Lambda functions.
 
 ### Silver Layer (Data Processing)
 
