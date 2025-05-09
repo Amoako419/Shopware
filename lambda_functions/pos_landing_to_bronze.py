@@ -1,10 +1,11 @@
 import json
 import logging
 import os
-import boto3
-import pandas as pd
 from datetime import datetime
 from urllib.parse import unquote_plus
+
+import boto3
+import pandas as pd
 from botocore.exceptions import ClientError
 
 # Configure logging
@@ -12,12 +13,14 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Initialize AWS clients
-s3_client = boto3.client('s3')
-sqs_client = boto3.client('sqs')
+s3_client = boto3.client("s3")
+sqs_client = boto3.client("sqs")
+
 
 # A function to get the current date
 def get_current_date():
-    return datetime.utcnow().strftime('%Y-%m-%d')
+    return datetime.utcnow().strftime("%Y-%m-%d")
+
 
 # A function to generate a unique Parquet filename by counting existing files in the destination path.
 def get_unique_parquet_filename(bucket, prefix):
@@ -33,8 +36,10 @@ def get_unique_parquet_filename(bucket, prefix):
         response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
         # Count existing Parquet files
         parquet_count = 0
-        if 'Contents' in response:
-            parquet_count = sum(1 for obj in response['Contents'] if obj['Key'].endswith('.parquet'))
+        if "Contents" in response:
+            parquet_count = sum(
+                1 for obj in response["Contents"] if obj["Key"].endswith(".parquet")
+            )
         # Generate the next filename (e.g., data1.parquet for count=0)
         return f"data{parquet_count + 1}.parquet"
     except ClientError as e:
@@ -43,6 +48,7 @@ def get_unique_parquet_filename(bucket, prefix):
     except Exception as e:
         logger.error(f"Unexpected error generating unique filename: {str(e)}")
         return None
+
 
 # A function to parse S3 event from SQS message to extract bucket and key.
 def parse_s3_event(s3_event):
@@ -53,13 +59,14 @@ def parse_s3_event(s3_event):
         tuple: (bucket_name, object_key) or (None, None) if parsing fails.
     """
     try:
-        bucket = s3_event['s3']['bucket']['name']
-        key = unquote_plus(s3_event['s3']['object']['key'])
+        bucket = s3_event["s3"]["bucket"]["name"]
+        key = unquote_plus(s3_event["s3"]["object"]["key"])
         logger.info(f"Parsed S3 event: bucket={bucket}, key={key}")
         return bucket, key
     except KeyError as e:
         logger.error(f"Failed to parse S3 event: {str(e)}")
         return None, None
+
 
 # A function to read a CSV file from S3 into a pandas DataFrame.
 def read_csv_from_s3(bucket, key):
@@ -73,7 +80,7 @@ def read_csv_from_s3(bucket, key):
     try:
         logger.info(f"Reading CSV from s3://{bucket}/{key}")
         obj = s3_client.get_object(Bucket=bucket, Key=key)
-        df = pd.read_csv(obj['Body'])
+        df = pd.read_csv(obj["Body"])
         logger.info(f"Successfully read CSV: {df.shape[0]} rows, {df.shape[1]} columns")
         return df
     except ClientError as e:
@@ -82,6 +89,7 @@ def read_csv_from_s3(bucket, key):
     except Exception as e:
         logger.error(f"Unexpected error reading CSV: {str(e)}")
         return None
+
 
 # A function to write a DataFrame to S3 as a Parquet file.
 def write_parquet_to_s3(df, bucket, destination_key):
@@ -96,13 +104,13 @@ def write_parquet_to_s3(df, bucket, destination_key):
     try:
         logger.info(f"Writing Parquet to s3://{bucket}/{destination_key}")
         # Convert DataFrame to Parquet in memory
-        parquet_buffer = df.to_parquet(engine='pyarrow', index=False)
+        parquet_buffer = df.to_parquet(engine="pyarrow", index=False)
         # Upload to S3
         s3_client.put_object(
             Bucket=bucket,
             Key=destination_key,
             Body=parquet_buffer,
-            ContentType='application/x-parquet'
+            ContentType="application/x-parquet",
         )
         logger.info(f"Successfully wrote Parquet to s3://{bucket}/{destination_key}")
         return True
@@ -113,8 +121,15 @@ def write_parquet_to_s3(df, bucket, destination_key):
         logger.error(f"Unexpected error writing Parquet: {str(e)}")
         return False
 
+
 # A function to process an S3 event by reading CSV, converting to Parquet, and saving to destination bucket.
-def process_s3_event(s3_event, source_bucket_name, destination_bucket_name, source_prefix, destination_prefix):
+def process_s3_event(
+    s3_event,
+    source_bucket_name,
+    destination_bucket_name,
+    source_prefix,
+    destination_prefix,
+):
     """
     Args:
         s3_event (dict): S3 event data.
@@ -132,16 +147,20 @@ def process_s3_event(s3_event, source_bucket_name, destination_bucket_name, sour
 
     # Verify bucket matches source bucket
     if bucket != source_bucket_name:
-        logger.warning(f"Skipping file from bucket {bucket}: does not match expected source bucket {source_bucket_name}")
+        logger.warning(
+            f"Skipping file from bucket {bucket}: does not match expected source bucket {source_bucket_name}"
+        )
         return False
 
     # Verify source path
     if not key.startswith(source_prefix):
-        logger.warning(f"Skipping file {key}: does not match source prefix {source_prefix}")
+        logger.warning(
+            f"Skipping file {key}: does not match source prefix {source_prefix}"
+        )
         return False
 
     # Verify file ends with .csv
-    if not key.lower().endswith('.csv'):
+    if not key.lower().endswith(".csv"):
         logger.warning(f"Skipping file {key}: not a CSV file")
         return False
 
@@ -172,6 +191,7 @@ def process_s3_event(s3_event, source_bucket_name, destination_bucket_name, sour
 
     return True
 
+
 # AWS Lambda handler to process SQS messages containing S3 events.
 def lambda_handler(event, context):
     """
@@ -183,39 +203,41 @@ def lambda_handler(event, context):
     """
     # Fetch bucket names from environment variables
     try:
-        source_bucket_name = os.environ['SOURCE_BUCKET_NAME']
-        destination_bucket_name = os.environ['DESTINATION_BUCKET_NAME']
-        logger.info(f"Using source bucket: {source_bucket_name}, destination bucket: {destination_bucket_name}")
+        source_bucket_name = os.environ["SOURCE_BUCKET_NAME"]
+        destination_bucket_name = os.environ["DESTINATION_BUCKET_NAME"]
+        logger.info(
+            f"Using source bucket: {source_bucket_name}, destination bucket: {destination_bucket_name}"
+        )
     except KeyError as e:
         logger.error(f"Environment variable {str(e)} not set")
         return {
-            'statusCode': 500,
-            'body': json.dumps({'error': f"Environment variable {str(e)} missing"})
+            "statusCode": 500,
+            "body": json.dumps({"error": f"Environment variable {str(e)} missing"}),
         }
 
     logger.info(f"Received event with {len(event['Records'])} records")
-    
+
     source_prefix = "pos/"
     destination_prefix = "bronze-pos/"
     processed_records = 0
     failed_records = 0
 
-    for record in event['Records']:
+    for record in event["Records"]:
         try:
             # Parse SQS message
-            message_body = json.loads(record['body'])
+            message_body = json.loads(record["body"])
             logger.info(f"Processing SQS message: {record['messageId']}")
 
             # S3 events may be wrapped in an SNS or direct S3 notification
-            if 'Records' in message_body:
+            if "Records" in message_body:
                 # S3 event notification
-                for s3_record in message_body['Records']:
+                for s3_record in message_body["Records"]:
                     success = process_s3_event(
-                        s3_record, 
-                        source_bucket_name, 
-                        destination_bucket_name, 
-                        source_prefix, 
-                        destination_prefix
+                        s3_record,
+                        source_bucket_name,
+                        destination_bucket_name,
+                        source_prefix,
+                        destination_prefix,
                     )
                     if success:
                         processed_records += 1
@@ -227,8 +249,8 @@ def lambda_handler(event, context):
 
             # Delete message from SQS to prevent reprocessing
             sqs_client.delete_message(
-                QueueUrl=record['eventSourceARN'].split(':')[5],
-                ReceiptHandle=record['receiptHandle']
+                QueueUrl=record["eventSourceARN"].split(":")[5],
+                ReceiptHandle=record["receiptHandle"],
             )
             logger.info(f"Deleted SQS message: {record['messageId']}")
 
@@ -242,12 +264,11 @@ def lambda_handler(event, context):
             logger.error(f"Unexpected error processing record: {str(e)}")
             failed_records += 1
 
-    logger.info(f"Processing complete: {processed_records} succeeded, {failed_records} failed")
-    
+    logger.info(
+        f"Processing complete: {processed_records} succeeded, {failed_records} failed"
+    )
+
     return {
-        'statusCode': 200,
-        'body': json.dumps({
-            'processed': processed_records,
-            'failed': failed_records
-        })
+        "statusCode": 200,
+        "body": json.dumps({"processed": processed_records, "failed": failed_records}),
     }
