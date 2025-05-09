@@ -1,8 +1,12 @@
 # Shopware Data Pipeline
-
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)
 ![Python Version](https://img.shields.io/badge/python-3.11%2B-blue)
 ![AWS](https://img.shields.io/badge/AWS-%23FF9900.svg?style=for-the-badge&logo=amazon-aws&logoColor=white)
+![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)
+![Terraform](https://img.shields.io/badge/terraform-%235835CC.svg?style=for-the-badge&logo=terraform&logoColor=white)
+![Power Bi](https://img.shields.io/badge/power_bi-F2C811?style=for-the-badge&logo=powerbi&logoColor=black)
+![GitHub Actions](https://img.shields.io/badge/github%20actions-%232671E5.svg?style=for-the-badge&logo=githubactions&logoColor=white)
+![Maintainability](https://img.shields.io/badge/maintainability-A-green)
 
 ## Overview
 
@@ -264,6 +268,37 @@ Key configuration files:
    - Check S3 bucket permissions
    - Ensure data partitioning is correctly configured
 
+## CI/CD with GitHub Actions
+
+Our pipeline uses GitHub Actions for continuous integration and deployment, automating several critical processes:
+
+### Infrastructure Deployment
+- **Terraform Validation**: Automatically validates Terraform configurations on pull requests
+- **Infrastructure Deployment**: Deploys AWS infrastructure changes after merge to main branch
+- **Security Scanning**: Runs infrastructure security checks using checkov and tfsec
+
+### Code Quality
+- **Python Linting**: Runs flake8 and black for code style enforcement
+- **Type Checking**: Validates type hints using mypy
+- **Unit Tests**: Executes pytest suite for Python components
+- **Integration Tests**: Tests end-to-end data flow on staging environment
+
+### Container Management
+- **Docker Image Building**: Builds container images for ECS Fargate connectors
+- **Image Security Scanning**: Scans Docker images for vulnerabilities using Trivy
+- **ECR Publishing**: Pushes validated images to Amazon ECR
+
+### Data Quality
+- **Schema Validation**: Validates data schemas before deployment
+- **Data Test Suite**: Runs dbt tests for data transformation logic
+- **Documentation**: Auto-generates and publishes data documentation
+
+Workflows are defined in `.github/workflows/` and triggered on:
+- Pull request creation/updates
+- Merges to main branch
+- Scheduled runs for security scanning
+- Manual triggers for emergency fixes
+
 ## Contact
 
 For questions or support, please contact the data engineering team.
@@ -298,7 +333,7 @@ We use [SemVer](http://semver.org/) for versioning. For the versions available, 
 
 ## Authors
 
-* **Heskey Amoako** - *Initial work*
+* **Amoako Heskey** - *Initial work*
 * **Andrew Marfo** - *Contributor*
 * **Charles Adu Nkansah** - *Contributor*
 * **Ann-Vanessa Lartey** - *Contributor*
