@@ -38,13 +38,13 @@ try:
     dyf_pos = glueContext.create_dynamic_frame.from_catalog(
         database=POS_DATABASE,
         table_name=POS_TABLE,
-        additional_options={"version"="2"}
+        additional_options={"version": "2"}
     )
 
     dyf_inv = glueContext.create_dynamic_frame.from_catalog(
         database=POS_DATABASE,
         table_name=INV_TABLE,
-        additional_options={"version"="4"}
+        additional_options={"version": "4"}
     )
     logger.info("Data read from catalog successfully.")
 
