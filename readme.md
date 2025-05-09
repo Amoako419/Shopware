@@ -45,9 +45,14 @@ The pipeline ingests data from four sources:
    - Processed data flows through the medallion architecture.
 
 2. **Streaming Data (Web Traffic, CRM Interactions)**:
-   - **ECS Fargate Services**: Containerized applications continuously poll external APIs.
-   - **Data Streaming**: Fetched data is sent to Kinesis Data Streams.
-   - **Lambda Functions**: Process and validate the streaming data.
+   - **ECS Fargate Connectors**: Containerized applications running in ECS Fargate that:
+     - Poll web traffic data from `/api/web-traffic/` endpoint
+     - Poll CRM interaction data from `/api/customer-interaction/` endpoint
+     - Send collected data to Kinesis Data Streams
+   - **API Gateway Webhooks**: HTTP endpoints that:
+     - Accept pushed data via webhooks
+     - Use Lambda proxies to forward data to Kinesis Data Streams
+   - All streaming data is processed by Lambda functions and stored in S3 Bronze buckets.
 
 ### Data Storage & Processing
 
@@ -185,8 +190,14 @@ Key configuration files:
      - Inventory: Hourly updates.
    - Data is sent to Kinesis Data Streams and stored in S3 Bronze buckets.
 2. **Streaming Data Collection (Web Traffic, CRM Interactions)**:
-   - ECS Fargate Connectors: There are indeed ECS Fargate services running containerized applications that continuously poll external APIs and send data to Kinesis Data Streams. This is evidenced by the connector code in api-gw-webhooks/web-logs-infra/connector/connector.py and api-gw-webhooks/crm-logs-infra/connector/connector.py.
-   - API Gateway Webhooks: There's also an API Gateway setup that receives webhook data and forwards it to Kinesis via Lambda proxies.
+   - **ECS Fargate Connectors**: Containerized applications running in ECS Fargate that:
+     - Poll web traffic data from `/api/web-traffic/` endpoint
+     - Poll CRM interaction data from `/api/customer-interaction/` endpoint
+     - Send collected data to Kinesis Data Streams
+   - **API Gateway Webhooks**: HTTP endpoints that:
+     - Accept pushed data via webhooks
+     - Use Lambda proxies to forward data to Kinesis Data Streams
+   - All streaming data is processed by Lambda functions and stored in S3 Bronze buckets.
 
 ### Silver Layer (Data Processing)
 
