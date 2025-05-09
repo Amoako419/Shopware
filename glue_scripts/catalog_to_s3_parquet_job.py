@@ -1,15 +1,33 @@
 # Import required libraries for AWS Glue
-from awsglue.transforms import *
-from awsglue.utils import getResolvedOptions
-from awsglue.context import GlueContext
-from awsglue.job import Job
-from pyspark.context import SparkContext
-from pyspark.sql.functions import col, when, isnan, isnull, to_timestamp, lit, year, month, dayofmonth, dayofweek, mean, stddev, min, max, datediff, first
-from pyspark.sql.types import DoubleType, TimestampType, IntegerType, LongType
-from pyspark.sql.window import Window
-from datetime import datetime
 import logging
 import sys
+from datetime import datetime
+
+from awsglue.context import GlueContext
+from awsglue.job import Job
+from awsglue.transforms import *
+from awsglue.utils import getResolvedOptions
+from pyspark.context import SparkContext
+from pyspark.sql.functions import (
+    col,
+    datediff,
+    dayofmonth,
+    dayofweek,
+    first,
+    isnan,
+    isnull,
+    lit,
+    max,
+    mean,
+    min,
+    month,
+    stddev,
+    to_timestamp,
+    when,
+    year,
+)
+from pyspark.sql.types import DoubleType, IntegerType, LongType, TimestampType
+from pyspark.sql.window import Window
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -23,25 +41,27 @@ job = Job(glueContext)
 
 # Get job parameters
 # args = getResolvedOptions(sys.argv, ['JOB_NAME'])
-args = getResolvedOptions(sys.argv, [
-    'JOB_NAME',
-    'S3_BUCKET_NAME',
-    'DATABASE_NAME',
-    'WEB_LOGS_TABLE_NAME',
-    'CRM_LOGS_TABLE_NAME',
-    'POS_TABLE_NAME',
-    'INVENTORY_TABLE_NAME'
-])
-job.init(args['JOB_NAME'])
+args = getResolvedOptions(
+    sys.argv,
+    [
+        "JOB_NAME",
+        "S3_BUCKET_NAME",
+        "DATABASE_NAME",
+        "WEB_LOGS_TABLE_NAME",
+        "CRM_LOGS_TABLE_NAME",
+        "POS_TABLE_NAME",
+        "INVENTORY_TABLE_NAME",
+    ],
+)
+job.init(args["JOB_NAME"])
 
-S3_BUCKET_NAME = args['S3_BUCKET_NAME']
-DATABASE_NAME = args['DATABASE_NAME']
+S3_BUCKET_NAME = args["S3_BUCKET_NAME"]
+DATABASE_NAME = args["DATABASE_NAME"]
 
-WEB_LOGS_TABLE_NAME = args['WEB_LOGS_TABLE_NAME']
-CRM_LOGS_TABLE_NAME = args['CRM_LOGS_TABLE_NAME']
-POS_TABLE_NAME = args['POS_TABLE_NAME']
-INVENTORY_TABLE_NAME = args['INVENTORY_TABLE_NAME']
-
+WEB_LOGS_TABLE_NAME = args["WEB_LOGS_TABLE_NAME"]
+CRM_LOGS_TABLE_NAME = args["CRM_LOGS_TABLE_NAME"]
+POS_TABLE_NAME = args["POS_TABLE_NAME"]
+INVENTORY_TABLE_NAME = args["INVENTORY_TABLE_NAME"]
 
 
 logger.info("Starting data ingestion...")
@@ -59,12 +79,10 @@ current_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 #     table_name=CRM_LOGS_TABLE_NAME
 # )
 datasource3 = glueContext.create_dynamic_frame.from_catalog(
-    database=DATABASE_NAME,
-    table_name=POS_TABLE_NAME
+    database=DATABASE_NAME, table_name=POS_TABLE_NAME
 )
 datasource4 = glueContext.create_dynamic_frame.from_catalog(
-    database=DATABASE_NAME,
-    table_name=INVENTORY_TABLE_NAME
+    database=DATABASE_NAME, table_name=INVENTORY_TABLE_NAME
 )
 
 # Convert dynamic frames to Spark DataFrames
@@ -96,7 +114,7 @@ glueContext.write_dynamic_frame.from_options(
     connection_options={
         "path": f"s3://{S3_BUCKET_NAME}/silver-pos/{current_timestamp}/"
     },
-    format="parquet"
+    format="parquet",
 )
 glueContext.write_dynamic_frame.from_options(
     frame=datasource4,
@@ -104,7 +122,7 @@ glueContext.write_dynamic_frame.from_options(
     connection_options={
         "path": f"s3://{S3_BUCKET_NAME}/silver-inventory/{current_timestamp}/"
     },
-    format="parquet"
+    format="parquet",
 )
 
 # Commit the job
