@@ -1,0 +1,341 @@
+{
+    "StartAt": "ParallelCrawlers",
+    "States": {
+      "ParallelCrawlers": {
+        "Type": "Parallel",
+        "Next": "SendGlueJobStartingAlert",
+        "Branches": [
+          {
+            "StartAt": "StartGlueCrawler2",
+            "States": {
+              "StartGlueCrawler2": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
+                "Parameters": {
+                  "Name": "inventory_bronze_crawler"
+                },
+                "Next": "SendCrawler2StartAlert",
+                "Catch": [
+                  {
+                    "ErrorEquals": [
+                      "States.ALL"
+                    ],
+                    "ResultPath": "$.error",
+                    "Next": "SendCrawler2FailureAlert"
+                  }
+                ]
+              },
+              "SendCrawler2StartAlert": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::sns:publish",
+                "Parameters": {
+                  "TopicArn": "${SNS_TOPIC_ARN}",
+                  "Message": {
+                    "ExecutionName.$": "$$.Execution.Name",
+                    "StateMachineName.$": "$$.StateMachine.Name",
+                    "Status": "STARTED",
+                    "Crawler": "inventory_bronze_crawler",
+                    "Timestamp.$": "$$.State.EnteredTime"
+                  }
+                },
+                "Next": "WaitForCrawler2Completion"
+              },
+              "WaitForCrawler2Completion": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::aws-sdk:glue:getCrawler",
+                "Parameters": {
+                  "Name": "inventory_bronze_crawler"
+                },
+                "Next": "CheckCrawler2Status"
+              },
+              "CheckCrawler2Status": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.Crawler.State",
+                    "StringEquals": "RUNNING",
+                    "Next": "Crawler2WaitInterval"
+                  }
+                ],
+                "Default": "SendCrawler2CompletionAlert"
+              },
+              "Crawler2WaitInterval": {
+                "Type": "Wait",
+                "Seconds": 30,
+                "Next": "WaitForCrawler2Completion"
+              },
+              "SendCrawler2CompletionAlert": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::sns:publish",
+                "Parameters": {
+                  "TopicArn": "${SNS_TOPIC_ARN}",
+                  "Message": {
+                    "ExecutionName.$": "$$.Execution.Name",
+                    "StateMachineName.$": "$$.StateMachine.Name",
+                    "Status": "COMPLETED",
+                    "Crawler": "inventory_bronze_crawler",
+                    "CrawlerState.$": "$.Crawler.State",
+                    "LastCrawlInfo.$": "$.Crawler.LastCrawl",
+                    "Timestamp.$": "$$.State.EnteredTime"
+                  }
+                },
+                "End": true
+              },
+              "SendCrawler2FailureAlert": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::sns:publish",
+                "Parameters": {
+                  "TopicArn": "${SNS_TOPIC_ARN}",
+                  "Message": {
+                    "ExecutionName.$": "$$.Execution.Name",
+                    "StateMachineName.$": "$$.StateMachine.Name",
+                    "Status": "FAILED",
+                    "Crawler": "inventory_bronze_crawler",
+                    "Error.$": "$.error",
+                    "Timestamp.$": "$$.State.EnteredTime"
+                  }
+                },
+                "End": true
+              }
+            }
+          },
+          {
+            "StartAt": "StartGlueCrawler3",
+            "States": {
+              "StartGlueCrawler3": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
+                "Parameters": {
+                  "Name": "pos_bronze_crawler"
+                },
+                "Next": "SendCrawler3StartAlert",
+                "Catch": [
+                  {
+                    "ErrorEquals": [
+                      "States.ALL"
+                    ],
+                    "ResultPath": "$.error",
+                    "Next": "SendCrawler3FailureAlert"
+                  }
+                ]
+              },
+              "SendCrawler3StartAlert": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::sns:publish",
+                "Parameters": {
+                  "TopicArn": "${SNS_TOPIC_ARN}",
+                  "Message": {
+                    "ExecutionName.$": "$$.Execution.Name",
+                    "StateMachineName.$": "$$.StateMachine.Name",
+                    "Status": "STARTED",
+                    "Crawler": "pos_bronze_crawler",
+                    "Timestamp.$": "$$.State.EnteredTime"
+                  }
+                },
+                "Next": "WaitForCrawler3Completion"
+              },
+              "WaitForCrawler3Completion": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::aws-sdk:glue:getCrawler",
+                "Parameters": {
+                  "Name": "pos_bronze_crawler"
+                },
+                "Next": "CheckCrawler3Status"
+              },
+              "CheckCrawler3Status": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.Crawler.State",
+                    "StringEquals": "RUNNING",
+                    "Next": "Crawler3WaitInterval"
+                  }
+                ],
+                "Default": "SendCrawler3CompletionAlert"
+              },
+              "Crawler3WaitInterval": {
+                "Type": "Wait",
+                "Seconds": 30,
+                "Next": "WaitForCrawler3Completion"
+              },
+              "SendCrawler3CompletionAlert": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::sns:publish",
+                "Parameters": {
+                  "TopicArn": "${SNS_TOPIC_ARN}",
+                  "Message": {
+                    "ExecutionName.$": "$$.Execution.Name",
+                    "StateMachineName.$": "$$.StateMachine.Name",
+                    "Status": "COMPLETED",
+                    "Crawler": "pos_bronze_crawler",
+                    "CrawlerState.$": "$.Crawler.State",
+                    "LastCrawlInfo.$": "$.Crawler.LastCrawl",
+                    "Timestamp.$": "$$.State.EnteredTime"
+                  }
+                },
+                "End": true
+              },
+              "SendCrawler3FailureAlert": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::sns:publish",
+                "Parameters": {
+                  "TopicArn": "${SNS_TOPIC_ARN}",
+                  "Message": {
+                    "ExecutionName.$": "$$.Execution.Name",
+                    "StateMachineName.$": "$$.StateMachine.Name",
+                    "Status": "FAILED",
+                    "Crawler": "pos_bronze_crawler",
+                    "Error.$": "$.error",
+                    "Timestamp.$": "$$.State.EnteredTime"
+                  }
+                },
+                "End": true
+              }
+            }
+          }
+        ],
+        "Catch": [
+          {
+            "ErrorEquals": [
+              "States.ALL"
+            ],
+            "ResultPath": "$.error",
+            "Next": "SendParallelCrawlersFailureAlert"
+          }
+        ]
+      },
+      "SendParallelCrawlersFailureAlert": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "TopicArn": "${SNS_TOPIC_ARN}",
+          "Message": {
+            "ExecutionName.$": "$$.Execution.Name",
+            "StateMachineName.$": "$$.StateMachine.Name",
+            "Status": "FAILED",
+            "Component": "ParallelCrawlers",
+            "Error.$": "$.error",
+            "Timestamp.$": "$$.State.EnteredTime"
+          }
+        },
+        "Next": "WorkflowFailed"
+      },
+      "SendGlueJobStartingAlert": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "TopicArn": "${SNS_TOPIC_ARN}",
+          "Message": {
+            "ExecutionName.$": "$$.Execution.Name",
+            "StateMachineName.$": "$$.StateMachine.Name",
+            "Status": "STARTING",
+            "Component": "GlueJob",
+            "JobName": "YOUR_GLUE_JOB_NAME",
+            "Timestamp.$": "$$.State.EnteredTime"
+          }
+        },
+        "Next": "StartGlueJob"
+      },
+      "StartGlueJob": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::glue:startJobRun.sync",
+        "Parameters": {
+          "JobName": "YOUR_GLUE_JOB_NAME",
+          "Timeout": 2880,
+          "WorkerType": "G.1X",
+          "NumberOfWorkers": 2,
+          "Arguments": {
+            "--execution_date.$": "$$.Execution.StartTime",
+            "--job_run_id.$": "$$.Execution.Name"
+          }
+        },
+        "Next": "SendGlueJobCompletionAlert",
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "States.TaskFailed"
+            ],
+            "IntervalSeconds": 60,
+            "MaxAttempts": 3,
+            "BackoffRate": 2
+          }
+        ],
+        "Catch": [
+          {
+            "ErrorEquals": [
+              "States.ALL"
+            ],
+            "ResultPath": "$.error",
+            "Next": "SendGlueJobFailureAlert"
+          }
+        ]
+      },
+      "SendGlueJobCompletionAlert": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "TopicArn": "${SNS_TOPIC_ARN}",
+          "Message": {
+            "ExecutionName.$": "$$.Execution.Name",
+            "StateMachineName.$": "$$.StateMachine.Name",
+            "Status": "COMPLETED",
+            "Component": "GlueJob",
+            "JobName": "catalog-to-s3-parquet-job",
+            "JobRunId.$": "$.Id",
+            "Timestamp.$": "$$.State.EnteredTime"
+          }
+        },
+        "Next": "WorkflowSucceeded"
+      },
+      "SendGlueJobFailureAlert": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "TopicArn": "${SNS_TOPIC_ARN}",
+          "Message": {
+            "ExecutionName.$": "$$.Execution.Name",
+            "StateMachineName.$": "$$.StateMachine.Name",
+            "Status": "FAILED",
+            "Component": "GlueJob",
+            "JobName": "catalog-to-s3-parquet-job",
+            "Error.$": "$.error",
+            "Timestamp.$": "$$.State.EnteredTime"
+          }
+        },
+        "Next": "WorkflowFailed"
+      },
+      "WorkflowSucceeded": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "TopicArn": "${SNS_TOPIC_ARN}",
+          "Message": {
+            "ExecutionName.$": "$$.Execution.Name",
+            "StateMachineName.$": "$$.StateMachine.Name",
+            "Status": "SUCCEEDED",
+            "StartTime.$": "$$.Execution.StartTime",
+            "EndTime.$": "$$.State.EnteredTime",
+            "Timestamp.$": "$$.State.EnteredTime"
+          }
+        },
+        "End": true
+      },
+      "WorkflowFailed": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "TopicArn": "${SNS_TOPIC_ARN}",
+          "Message": {
+            "ExecutionName.$": "$$.Execution.Name",
+            "StateMachineName.$": "$$.StateMachine.Name",
+            "Status": "FAILED",
+            "StartTime.$": "$$.Execution.StartTime",
+            "EndTime.$": "$$.State.EnteredTime",
+            "Error.$": "$.error",
+            "Timestamp.$": "$$.State.EnteredTime"
+          }
+        },
+        "End": true
+      }
+    }
+  }
