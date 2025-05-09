@@ -333,7 +333,7 @@ We use [SemVer](http://semver.org/) for versioning. For the versions available, 
 
 ## Authors
 
-* **Amoako Heskey** - *Initial work*
+* **Amoako Heskey** - *Contributor*
 * **Andrew Marfo** - *Contributor*
 * **Charles Adu Nkansah** - *Contributor*
 * **Ann-Vanessa Lartey** - *Contributor*
