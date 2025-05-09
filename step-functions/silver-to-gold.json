@@ -1,0 +1,82 @@
+{
+    "Comment": "Run two Glue Crawlers in parallel, then a Glue Job, with failure notifications and wait time.",
+    "StartAt": "Run Crawlers", 
+    "States": {
+      "Run Crawlers": {
+        "Type": "Parallel",
+        "Branches": [
+          {
+            "StartAt": "Run CRM Crawler",
+            "States": {
+              "Run CRM Crawler": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
+                "Parameters": {
+                  "Name": "${POS_CRAWLER_NAME}"
+                },
+                "Next": "Wait for Crawler"
+              },
+              "Wait for Crawler": {
+                "Type": "Wait",
+                "Seconds": 90,
+                "End": true
+              }
+            }
+          },
+          {
+            "StartAt": "Run Web Crawler",
+            "States": {
+              "Run Web Crawler": {
+                "Type": "Task", 
+                "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
+                "Parameters": {
+                  "Name": "${INVENTORY_CRAWLER_NAME}"
+                },
+                "Next": "Wait for Crawler to finish"
+              },
+              "Wait for Crawler to finish": {
+                "Type": "Wait",
+                "End": true,
+                "Seconds": 90
+              }
+            }
+          }
+        ],
+        "Next": "Run Glue Job",
+        "Catch": [
+          {
+            "ErrorEquals": [
+              "States.ALL"
+            ],
+            "Next": "Notify Failure"
+          }
+        ]
+      },
+      "Run Glue Job": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::glue:startJobRun.sync",
+        "Parameters": {
+          "JobName": "${GLUE_JOB_NAME}"
+        },
+        "End": true,
+        "Catch": [
+          {
+            "ErrorEquals": [
+              "States.ALL"
+            ],
+            "Next": "Notify Failure"
+          }
+        ]
+      },
+      "Notify Failure": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "TopicArn": "${SNS_TOPIC_ARN}",
+          "Message": "Step Function failed during execution.",
+          "Subject": "Glue Workflow Failure"
+        },
+        "End": true
+      }
+    }
+  }
