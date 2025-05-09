@@ -180,13 +180,13 @@ Key configuration files:
 ### Bronze Layer (Data Ingestion)
 
 1. **Batch Data Collection (POS, Inventory)**:
-   - ECS Fargate connectors poll source APIs:
+   - Lambda moves data from the landing bucket in parquet format:
      - POS: Daily updates.
      - Inventory: Hourly updates.
    - Data is sent to Kinesis Data Streams and stored in S3 Bronze buckets.
 2. **Streaming Data Collection (Web Traffic, CRM Interactions)**:
-   - Real-time data pushed via API Gateway webhooks.
-   - Data is sent to Kinesis Data Streams and stored in S3 Bronze buckets.
+   - ECS Fargate Connectors: There are indeed ECS Fargate services running containerized applications that continuously poll external APIs and send data to Kinesis Data Streams. This is evidenced by the connector code in api-gw-webhooks/web-logs-infra/connector/connector.py and api-gw-webhooks/crm-logs-infra/connector/connector.py.
+   - API Gateway Webhooks: There's also an API Gateway setup that receives webhook data and forwards it to Kinesis via Lambda proxies.
 
 ### Silver Layer (Data Processing)
 
@@ -196,7 +196,7 @@ Key configuration files:
    - Results are stored in S3 Silver buckets.
 2. **Streaming Data**:
    - AWS Lambda processes streaming data in real-time.
-   - Data is cleaned and transformed, then stored in S3 Silver buckets.
+   - Data is cleaned and transformed, then stored in Redshift.
 
 ### Gold Layer (Analytics)
 
